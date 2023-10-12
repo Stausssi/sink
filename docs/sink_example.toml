@@ -1,0 +1,59 @@
+# Include other sink.toml files. Could also be used to separate programming languages and stuff
+includes = [
+    "path/to/other/sink.toml",
+]
+# Specify the default dependency group for every language
+default-group = "prod"
+
+# Everything following this is plugin specific
+[Python]
+version = "3.11"
+# Either the name of venv inside $HOME/.virtualenvs or relative path to repostory root
+venv = "project-name" # Would result in $HOME/.virtualenvs/project-name
+# venv = "./venv"  # Would result in PROJECT_DIR/venv
+# Tell Python to use pip as a backend. This is Python plugin specific
+backend = "pip"
+# Overwrite the default group specified in the root table
+default-group = "dev"
+
+    [Python.dev]
+    # Install all prod requirements as well
+    includes = "prod"
+
+        [[Python.dev.dependencies]]
+        name = "python-package"
+        # This matches solely version 1.2.3
+        version = "1.2.3"
+
+        [[Python.dev.dependencies]]
+        name = "other-package"
+        # This matches anything bigger than 1.0.0, same for < (less than)
+        version = ">1.0.0"
+
+        [[Python.dev.dependencies]]
+        name = "last-package"
+        # This matches anything compatible with 1.0.0
+        version = "~1.0.0"
+
+[Python.prod]
+    [[Python.prod.dependencies]]
+    name = "package-from-git"
+    # Version in this case will now be a git ref (SHA, branch name, or tag)
+    version = "v1.2.3"
+    url     = "https://www.github.com/some-package-from-git"
+
+[Rust]
+    # The group is optional. If none is given, it will be installed either with `default-group` or all (?)
+    [[Rust.dependencies]]
+    name    = "some-rust-thing"
+    version = "1.2.3"
+
+[GitHub]
+    # This is used to download files from GitHub releases
+    [[GitHub.dependencies]]
+    repository    = "Stausssi"
+    asset-pattern = "file-*.json"
+    # version can be any git release tag, defaults to the latest available release
+    version = "v1.2.3"
+    # The destination to download the files to
+    destination = "./imported/"
