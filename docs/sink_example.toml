@@ -11,8 +11,8 @@ version = "3.11"
 # Either the name of venv inside $HOME/.virtualenvs or relative path to repostory root
 venv = "project-name" # Would result in $HOME/.virtualenvs/project-name
 # venv = "./venv"  # Would result in PROJECT_DIR/venv
-# Tell Python to use pip as a backend. This is Python plugin specific
-backend = "pip"
+# Tell Python to use pip as a provider. This is Python plugin specific
+provider = "pip"
 # Overwrite the default group specified in the root table
 default-group = "dev"
 
@@ -36,11 +36,10 @@ default-group = "dev"
         version = "~1.0.0"
 
 [Python.prod]
-    [[Python.prod.dependencies]]
-    name = "package-from-git"
-    # Version in this case will now be a git ref (SHA, branch name, or tag)
-    version = "v1.2.3"
-    url     = "https://www.github.com/some-package-from-git"
+# Dependencies can also be defined inline
+dependencies = [
+    { name = "package-from-git", version = "v1.2.3", url = "https://www.github.com/some-package-from-git" },
+]
 
 [Rust]
     # The group is optional. If none is given, it will be installed either with `default-group` or all (?)

@@ -28,7 +28,7 @@ It can also be split up into multiple files, e.g. to separate programming langua
 ## Plugins
 
 Plugins are essential for `sink`.
-They bridge `sink.toml` with a dependency backend such as `pip`, `cargo`, and so on.
+They bridge `sink.toml` with a provider such as `pip`, `cargo`, and so on.
 
 Thus, it's also possible to convert `sink.toml` entries into the native form, e.g. `requirements.txt`, `Cargo.toml`, etc..
-This way, the default package manager can still be used as a fallback in environments where `sink` is not present.
+This way, the default package manager (*provider*) can still be used as a fallback in environments where `sink` is not present.
