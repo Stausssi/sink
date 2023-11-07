@@ -1,54 +1,122 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::fs::{self};
-use std::{error, fmt, io};
+use std::{fmt, io};
 
+use clap::{Args, Parser, Subcommand};
 use env_logger::Env;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use toml::Table;
 
 fn main() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+    let cli = SinkCLI::parse();
 
-    let sink_toml = SinkTOML::from_file("docs/sink_example.toml");
+    // Initialize logger
+    env_logger::Builder::from_env(Env::default().default_filter_or(if cli.verbose {
+        "debug"
+    } else {
+        "info"
+    }))
+    .init();
+
+    // Load sink TOML
+    let path = "docs/sink_example.toml";
+    let sink_toml = SinkTOML::from_file(path);
 
     if let Err(sink_err) = sink_toml {
-        error!("Failed to parse sink TOML: {sink_err}");
+        error!("{sink_err}");
         return;
     }
 
-    info!("Loaded sink TOML!");
-}
+    let sink_toml = sink_toml.unwrap();
+    debug!("Loaded sink TOML from '{path}'!");
 
-#[derive(Debug)]
-enum SinkParseError {
-    IOError(io::Error),
-    TOMLError(toml::de::Error),
-}
-impl fmt::Display for SinkParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            SinkParseError::IOError(ref e) => write!(f, "{e}"),
-            SinkParseError::TOMLError(ref e) => write!(f, "{e}"),
+    match &cli.command {
+        SinkSubcommands::Config(config) => {
+            if config.show {
+                info!("{:#?}", sink_toml);
+            }
         }
     }
 }
-impl error::Error for SinkParseError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        Some(self)
+
+/* ---------- [ CLI ] ---------- */
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None )]
+#[command(help_expected = true)]
+struct SinkCLI {
+    #[command(subcommand)]
+    command: SinkSubcommands,
+
+    /// Enable verbose (debug) output.
+    ///
+    /// This flag will set the default log level from 'info' to 'debug'.
+    /// TODO: Don't allow passing solely this flag
+    #[arg(long, short, global = true)]
+    verbose: bool,
+}
+
+#[derive(Subcommand)]
+enum SinkSubcommands {
+    /// Interact with the sink TOML file
+    Config(SubcommandConfig),
+}
+
+#[derive(Args)]
+#[command(arg_required_else_help = true)]
+struct SubcommandConfig {
+    /// Print the current sink TOML.
+    ///
+    /// This will print the currently loaded sink TOML with all 'includes' resolved.
+    #[arg(short, long)]
+    show: bool,
+}
+
+/* ---------- [ Errors ] ---------- */
+
+#[derive(Debug)]
+struct SinkParseError {
+    reason: SinkParseErrorTypes,
+}
+
+#[derive(Debug)]
+enum SinkParseErrorTypes {
+    IOError(io::Error),
+    TOMLError(toml::de::Error),
+}
+
+impl fmt::Display for SinkParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Failed to parse sink TOML! Caused by: '{}'", self.reason)
     }
 }
+impl fmt::Display for SinkParseErrorTypes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::IOError(ref e) => write!(f, "{e}"),
+            Self::TOMLError(ref e) => write!(f, "{e}"),
+        }
+    }
+}
+
 impl From<io::Error> for SinkParseError {
     fn from(err: io::Error) -> SinkParseError {
-        SinkParseError::IOError(err)
+        SinkParseError {
+            reason: SinkParseErrorTypes::IOError(err),
+        }
     }
 }
 impl From<toml::de::Error> for SinkParseError {
     fn from(err: toml::de::Error) -> SinkParseError {
-        SinkParseError::TOMLError(err)
+        SinkParseError {
+            reason: SinkParseErrorTypes::TOMLError(err),
+        }
     }
 }
+
+/* ---------- [ TOML ] ---------- */
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(
     rename_all(deserialize = "kebab-case", serialize = "snake_case"),
@@ -93,7 +161,6 @@ impl SinkTOML {
         }
 
         debug!("Parsing done!");
-        debug!("{:#?}", sink_toml);
 
         Ok(sink_toml)
     }

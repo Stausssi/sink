@@ -3,7 +3,7 @@ includes = [
     "path/to/other/sink.toml",
 ]
 # Specify the default dependency group for every language
-#default-group = "prod"
+default-group = "prod"
 
 # Everything following this is plugin specific
 [Python]
