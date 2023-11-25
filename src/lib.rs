@@ -1,54 +1,25 @@
+use anyhow::Result;
 use log::{debug, info, warn};
+
+use std::fmt::Display;
 use std::path::{Path, PathBuf};
-use std::{fmt, io};
 
 /* ---------- [ Errors ] ---------- */
+
+/// Wrapper around anyhow::Error to allow for custom Display trait
 #[derive(Debug)]
-pub struct SinkParseError {
-    reason: SinkParseErrorTypes,
+pub enum SinkError {
+    Any(anyhow::Error),
 }
-
-#[derive(Debug)]
-enum SinkParseErrorTypes {
-    IOError(io::Error),
-    TOMLError(toml::de::Error),
-    TOMLEditError(toml_edit::TomlError),
-}
-
-impl fmt::Display for SinkParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Failed to parse sink TOML! Caused by: '{}'", self.reason)
-    }
-}
-impl fmt::Display for SinkParseErrorTypes {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Self::IOError(ref e) => write!(f, "{e}"),
-            Self::TOMLError(ref e) => write!(f, "{e}"),
-            Self::TOMLEditError(ref e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl From<io::Error> for SinkParseError {
-    fn from(err: io::Error) -> SinkParseError {
-        SinkParseError {
-            reason: SinkParseErrorTypes::IOError(err),
-        }
-    }
-}
-impl From<toml::de::Error> for SinkParseError {
-    fn from(err: toml::de::Error) -> SinkParseError {
-        SinkParseError {
-            reason: SinkParseErrorTypes::TOMLError(err),
-        }
-    }
-}
-impl From<toml_edit::TomlError> for SinkParseError {
-    fn from(err: toml_edit::TomlError) -> SinkParseError {
-        SinkParseError {
-            reason: SinkParseErrorTypes::TOMLEditError(err),
-        }
+impl Display for SinkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self::Any(as_error) = self;
+        let mut error_string = as_error.to_string();
+        as_error
+            .chain()
+            .skip(1)
+            .for_each(|cause| error_string.push_str(&format!(" Caused by: {}", cause)));
+        write!(f, "{error_string}")
     }
 }
 
@@ -86,7 +57,7 @@ pub struct SinkTOML {
 }
 
 impl SinkTOML {
-    pub fn from_file(path: &str) -> Result<SinkTOML, SinkParseError> {
+    fn _from_file(path: &str) -> Result<SinkTOML> {
         debug!("Parsing sink TOML from '{path}'...");
 
         let string_contents = fs::read_to_string(path)?;
@@ -119,8 +90,15 @@ impl SinkTOML {
         Ok(sink_toml)
     }
 
-    fn save(&self) {
-        fs::write(&self.path, self.to_string()).unwrap();
+    pub fn from_file(path: &str) -> Result<SinkTOML, SinkError> {
+        let internal_result = SinkTOML::_from_file(path);
+
+        if let Err(err_result) = internal_result {
+            return Err(SinkError::Any(
+                err_result.context("Failed to parse Sink TOML!"),
+            ));
+        }
+        Ok(internal_result.unwrap())
     }
 }
 impl ToString for SinkTOML {

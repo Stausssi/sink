@@ -15,7 +15,7 @@ fn main() {
     }
 
     // Load sink TOML
-    let path = "docs/sink_example.toml";
+    let path = "docs/sink_example.tom";
     let sink_toml = SinkTOML::from_file(path);
 
     if let Err(sink_err) = sink_toml {
