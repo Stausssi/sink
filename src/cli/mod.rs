@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-
 use clap::{Args, Parser, Subcommand, ValueEnum};
+
+use crate::github;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None )]
@@ -28,7 +28,7 @@ pub enum SinkSubcommands {
 
     /// Manage GitHub dependencies
     #[command(subcommand, name = "github", alias = "gh")]
-    GitHub(SubcommandGitHub),
+    GitHub(github::cli::SubcommandGitHub),
 }
 
 #[derive(Args)]
@@ -116,38 +116,4 @@ pub enum Languages {
     /// GitHub. Alias: 'gh'
     #[value(name = "github", alias = "gh")]
     GitHub,
-}
-
-#[derive(Subcommand, Debug)]
-#[command(arg_required_else_help = true)]
-pub enum SubcommandGitHub {
-    /// Add and install a dependency.
-    ///
-    /// This downloads assets from GitHub releases to a local destination.
-    Add(SubcommandGitHubAdd),
-}
-
-#[derive(Args, Debug)]
-#[command(arg_required_else_help = true)]
-pub struct SubcommandGitHubAdd {
-    /// The name of the dependency.
-    ///
-    /// This is expected in the format [owner]/[repo]/[file-pattern].
-    /// If 'default-owner' is set, [owner] will default to it.
-    /// Same goes for 'default-repo'.
-    pub dependency: String,
-
-    /// The local destination to download the file(s) into.
-    ///
-    /// Either an absolute path or a relative path starting from the directory of the sink TOML.
-    #[arg(short, long = "destination", alias = "dest")]
-    pub destination: PathBuf,
-
-    /// The version to download.
-    ///
-    /// This corresponds to the git release tag.
-    /// If set to 'latest', the latest release will be downloaded.
-    /// If set to 'prerelease', the latest prerelease will be downloaded.
-    #[arg(short, long)]
-    pub version: String,
 }
