@@ -40,7 +40,9 @@ default-group = "dev"
     some-rust-thing = { version = "1.2.3", features = ["foobar"] }
 
 [GitHub]
-default-repository = "Stausssi/sink"
+default-owner      = "Stausssi"
+default-repository = "sink"
+
     # Dependencies can be quoted to allow for complex names
     [GitHub.dependencies."file-*.json"]
     repository = "Stausssi/Stausssi"

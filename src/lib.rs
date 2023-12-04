@@ -66,6 +66,17 @@ pub mod toml {
         pub formatted: Document,
     }
     impl SinkTOML {
+        fn _validate(&self) -> Result<()> {
+            if let Some(github_options) = &self.github {
+                if let Some(DependencyType::Invalid(invalid)) =
+                    &github_options.sink_options.dependencies
+                {
+                    return Err(anyhow::anyhow!("Invalid GitHub dependencies! {invalid:#?}"));
+                }
+            }
+            Ok(())
+        }
+
         fn _from_file(path: &str) -> Result<SinkTOML> {
             debug!("Parsing sink TOML from '{path}'...");
 
@@ -94,20 +105,18 @@ pub mod toml {
                 info!("Including is not yet implemented!");
             }
 
+            // Check for invalid entries
+            sink_toml._validate()?;
+
             debug!("Parsing done!");
 
             Ok(sink_toml)
         }
-
         pub fn from_file(path: &str) -> Result<SinkTOML, SinkError> {
-            let internal_result = SinkTOML::_from_file(path);
-
-            if let Err(err_result) = internal_result {
-                return Err(SinkError::Any(
-                    err_result.context("Failed to parse Sink TOML!"),
-                ));
+            match SinkTOML::_from_file(path) {
+                Ok(sink_toml) => Ok(sink_toml),
+                Err(e) => Err(SinkError::Any(e.context("Failed to parse Sink TOML!"))),
             }
-            Ok(internal_result.unwrap())
         }
     }
     impl ToString for SinkTOML {
@@ -116,21 +125,43 @@ pub mod toml {
         }
     }
 
-    #[derive(Serialize, Deserialize, Debug, Default)]
+    #[derive(Serialize, Deserialize, Debug)]
     #[serde(rename_all(deserialize = "kebab-case", serialize = "snake_case"))]
-    pub struct PluginOptions {
+    pub struct PluginOptions<TDependency> {
         pub provider: Option<String>,
         pub default_group: Option<String>,
 
         #[serde(flatten)]
-        pub dependencies: HashMap<String, Table>,
+        pub dependencies: Option<DependencyType<TDependency>>,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(untagged)]
+    pub enum DependencyType<T> {
+        Singular(DependencyContainer<T>),
+        Grouped(HashMap<String, DependencyContainer<T>>),
+        Invalid(Table),
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct DependencyContainer<T> {
+        pub includes: Option<String>,
+
+        pub dependencies: HashMap<String, Dependency<T>>,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(untagged)]
+    pub enum Dependency<T> {
+        Version(String),
+        Full(T),
     }
 
     #[derive(Serialize, Deserialize, Debug)]
     #[serde(rename_all(deserialize = "kebab-case", serialize = "snake_case"))]
     pub struct PythonPluginOptions {
         #[serde(flatten)]
-        sink_options: Option<PluginOptions>,
+        sink_options: PluginOptions<Table>,
 
         version: String,
         venv: Option<String>,
@@ -140,6 +171,6 @@ pub mod toml {
     #[serde(rename_all(deserialize = "kebab-case", serialize = "snake_case"))]
     pub struct RustPluginOptions {
         #[serde(flatten)]
-        sink_options: Option<PluginOptions>,
+        sink_options: PluginOptions<Table>,
     }
 }

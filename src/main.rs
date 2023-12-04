@@ -41,8 +41,8 @@ fn main() {
             info!("{:#?}", params);
         }
         cli::SinkSubcommands::GitHub(params) => match params {
-            github::cli::SubcommandGitHub::Add(params) => {
-                sink_toml = github::add(sink_toml, params);
+            github::cli::SubcommandGitHub::Add(dependency) => {
+                github::add(&mut sink_toml, dependency);
             }
         },
     }
