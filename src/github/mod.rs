@@ -6,7 +6,11 @@ use clap::Args;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+use crate::SinkDependency;
+
+pub const PLUGIN_NAME: &str = "GitHub";
+
+#[derive(Args, Serialize, Deserialize, Debug, Clone)]
 #[command(arg_required_else_help = true)]
 #[serde(rename_all(deserialize = "kebab-case", serialize = "snake_case"))]
 pub struct GitHubDependency {
@@ -68,6 +72,11 @@ impl Default for GitHubDependency {
             group: None,
             repository: String::from(""),
         }
+    }
+}
+impl SinkDependency for GitHubDependency {
+    fn convert_generic<GitHubDependency>(other: GitHubDependency) -> Self {
+        other
     }
 }
 
@@ -134,10 +143,9 @@ mod functions {
 
     extern crate toml as ex_toml;
 
-    use super::toml;
+    use super::{toml, PLUGIN_NAME};
     use crate::{
-        github::GitHubDependency,
-        toml::{DependencyContainer, DependencyType},
+        toml::{Dependency, DependencyContainer, DependencyType},
         SinkError, SinkTOML,
     };
 
@@ -178,40 +186,26 @@ mod functions {
         // Check if it can be installed
         download(dependency)?;
 
-        // Add to sink TOML
-        sink_toml.formatted["GitHub"]["dependencies"][&file_pattern] = toml_edit::Item::Table({
+        // Create objects to reference later on
+        let new_dependency = Dependency::Full(dependency.to_owned());
+        let formatted_value = toml_edit::Item::Table({
             let mut new_table = toml_edit::Table::new();
-            new_table.insert(KEY_REPOSITORY, toml_edit::value(repository.clone()));
+            new_table.insert(KEY_REPOSITORY, toml_edit::value(repository));
             new_table.insert(KEY_VERSION, toml_edit::value(dependency.version.clone()));
             new_table.insert(
                 KEY_DESTINATION,
                 toml_edit::value(dependency.destination.display().to_string()),
             );
-
             new_table
         });
 
-        match &github_options.sink_options.dependencies {
-            Some(dependencies) => match dependencies {
-                DependencyType::Grouped(dependencies) => {
-                    Ok(())
-                }
-                DependencyType::Singular(dependencies) => {
-                    Ok(())
-                }
-                DependencyType::Invalid(_) => {
-                    Err(anyhow::anyhow!("Current GitHub configuration contains invalid entries. Please fix them before adding new ones!"))
-                }
-            },
-            None => match &dependency.group {
-                Some(group) => {
-                    Ok(())
-                }
-                None => {
-                    Ok(())
-                }
-            },
-        }
+        sink_toml.add_dependency(
+            PLUGIN_NAME,
+            dependency.group.as_ref(),
+            new_dependency,
+            &file_pattern,
+            formatted_value,
+        )
     }
     /// Add a dependency.
     pub fn add(sink_toml: &mut SinkTOML, dependency: &super::GitHubDependency) {

@@ -4,6 +4,10 @@ pub mod github;
 pub use errors::SinkError;
 pub use toml::{PluginOptions, SinkTOML};
 
+pub trait SinkDependency: Clone {
+    fn convert_generic<T: SinkDependency>(other: &T) -> Self;
+}
+
 /* ---------- [ Errors ] ---------- */
 pub mod errors {
     use std::fmt::Display;
@@ -37,6 +41,8 @@ pub mod toml {
     use toml::Table;
     use toml_edit::{self, Document};
 
+    use crate::SinkDependency;
+
     use super::errors::SinkError;
     use super::github;
 
@@ -47,8 +53,8 @@ pub mod toml {
     )]
     pub struct SinkTOML {
         #[serde(default)]
-        includes: Vec<String>,
-        default_group: Option<String>,
+        pub includes: Vec<String>,
+        pub default_group: Option<String>,
 
         #[serde(rename = "Python")]
         pub python: Option<PythonPluginOptions>,
@@ -59,7 +65,7 @@ pub mod toml {
 
         /// Contains the path to the read sink TOML
         #[serde(skip)]
-        path: PathBuf,
+        pub path: PathBuf,
 
         /// Contains the formatted document for in-place manipulation
         #[serde(skip)]
@@ -118,6 +124,122 @@ pub mod toml {
                 Err(e) => Err(SinkError::Any(e.context("Failed to parse Sink TOML!"))),
             }
         }
+
+        pub fn add_dependency<T: SinkDependency>(
+            &mut self,
+            plugin_name: &str,
+            group: Option<&String>,
+            dependency: Dependency<T>,
+            dependency_key: &str,
+            formatted_value: toml_edit::Item,
+        ) -> Result<()> {
+            let plugin_sink_options: &mut PluginOptions<T>;
+
+
+            plugin_sink_options = &mut match plugin_name {
+                github::PLUGIN_NAME => self.github.expect("Please make sure to initialize the plugin sink options before calling this method!").sink_options,
+                _ => return Err(anyhow::anyhow!("Plugin {plugin_name} is not handled yet!"))
+            };
+
+            // The group is determined in this order:
+            // 1. Given via argument
+            // 2. Default group of GitHub
+            // 3. Default group of global TOML
+            let dependency_group = group.or(plugin_sink_options
+                .default_group
+                .as_ref()
+                .or(self.default_group.as_ref()));
+
+            // Create object to reference later on
+            let new_container = DependencyContainer {
+                includes: None,
+                dependencies: {
+                    let mut new_map = HashMap::new();
+                    new_map.insert(String::from(dependency_key), dependency.clone());
+                    new_map
+                },
+            };
+
+            match &mut plugin_sink_options.dependencies {
+                // Dependencies already exist
+                Some(dependency_type) => match dependency_type {
+    
+                    // Existing dependencies are grouped
+                    DependencyType::Grouped(grouped_containers) => {
+                        match dependency_group {
+    
+                            // Group was given via the CLI
+                            Some(final_group) => match grouped_containers.get(final_group) {
+    
+                                // Given group already exists
+                                Some(existing_dependencies) => {
+                                    if existing_dependencies.dependencies.get(dependency_key).is_some() {
+                                        return Err(anyhow::anyhow!("Dependency '{dependency_key}' already exists!"))
+                                    }
+                                    self.formatted[plugin_name][final_group]["dependencies"][dependency_key] = formatted_value;
+                                    existing_dependencies.dependencies.to_owned().insert(String::from(dependency_key), dependency.clone());
+                                    Ok(())
+                                },
+    
+                                // Given group does not exist and has to be created anew
+                                None => {
+                                    self.formatted[plugin_name][final_group]["dependencies"][dependency_key] = formatted_value;
+                                    grouped_containers.insert(String::from(final_group), new_container);
+                                    Ok(())
+                                }
+                            },
+    
+                            // No group given via CLI and no default-group exists in any scope
+                            None => Err(anyhow::anyhow!("Cannot add ungrouped dependency to grouped dependencies if default-group is not set!"))
+                        }
+                    }
+    
+                    // Dependencies are not grouped
+                    DependencyType::Singular(container) => {
+                        match container.dependencies.get(dependency_key) {
+                            Some(_) => Err(anyhow::anyhow!("Dependency '{dependency_key}' already exists!")),
+                            None => match dependency_group {
+                                Some(_) => Err(anyhow::anyhow!("Adding grouped dependencies to singular dependencies are not supported yet!")),
+                                None => {
+                                    self.formatted[plugin_name]["dependencies"][dependency_key] = formatted_value;
+                                    container.dependencies.insert(String::from(dependency_key), dependency.clone());
+                                    Ok(())
+                                }
+                            }
+                        }
+                    }
+    
+                    // Invalid dependency structure in TOML
+                    DependencyType::Invalid(_) => {
+                        Err(anyhow::anyhow!("Current GitHub configuration contains invalid entries. Please fix them before adding new ones!"))
+                    }
+                },
+    
+                // This is the first dependency
+                None => {
+                    plugin_sink_options.dependencies = Some(
+                        match dependency_group {
+                            // Create grouped dependency container
+                            Some(group) => {
+                                let mut new_map = HashMap::new();
+                                new_map.insert(String::from(group), new_container);
+    
+                                self.formatted[plugin_name][group]["dependencies"][dependency_key] = formatted_value;
+                                
+                                DependencyType::Grouped(new_map)
+                            }
+                            // Create singular dependency container
+                            None => {
+                                self.formatted[plugin_name]["dependencies"][dependency_key] = formatted_value;
+    
+                                DependencyType::Singular(new_container)
+                            }
+                        }
+                    );
+                    Ok(())
+                }
+            }
+        }
     }
     impl ToString for SinkTOML {
         fn to_string(&self) -> String {
@@ -127,32 +249,32 @@ pub mod toml {
 
     #[derive(Serialize, Deserialize, Debug)]
     #[serde(rename_all(deserialize = "kebab-case", serialize = "snake_case"))]
-    pub struct PluginOptions<TDependency> {
+    pub struct PluginOptions<T: SinkDependency> {
         pub provider: Option<String>,
         pub default_group: Option<String>,
 
         #[serde(flatten)]
-        pub dependencies: Option<DependencyType<TDependency>>,
+        pub dependencies: Option<DependencyType<T>>,
     }
 
     #[derive(Serialize, Deserialize, Debug)]
     #[serde(untagged)]
-    pub enum DependencyType<T> {
+    pub enum DependencyType<T: SinkDependency> {
         Singular(DependencyContainer<T>),
         Grouped(HashMap<String, DependencyContainer<T>>),
         Invalid(Table),
     }
 
     #[derive(Serialize, Deserialize, Debug)]
-    pub struct DependencyContainer<T> {
+    pub struct DependencyContainer<T: SinkDependency> {
         pub includes: Option<String>,
 
         pub dependencies: HashMap<String, Dependency<T>>,
     }
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     #[serde(untagged)]
-    pub enum Dependency<T> {
+    pub enum Dependency<T: SinkDependency> {
         Version(String),
         Full(T),
     }
@@ -173,4 +295,6 @@ pub mod toml {
         #[serde(flatten)]
         sink_options: PluginOptions<Table>,
     }
+
+    impl SinkDependency for Table {}
 }
