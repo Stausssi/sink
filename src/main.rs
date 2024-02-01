@@ -29,7 +29,7 @@ fn main() {
     let mut sink_toml = sink_toml.unwrap();
     debug!("Loaded sink TOML from '{path}'!");
 
-    match &cli.command {
+    match cli.command {
         cli::SinkSubcommands::Config(params) => {
             if params.all {
                 info!("{:#?}", sink_toml);

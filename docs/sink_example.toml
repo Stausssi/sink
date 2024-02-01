@@ -44,7 +44,7 @@ default-owner      = "Stausssi"
 default-repository = "sink"
 
     # Dependencies can be quoted to allow for complex names
-    [GitHub.dependencies."file-*.json"]
+    [GitHub.prod.dependencies."file-*.json"]
     repository = "Stausssi/Stausssi"
     # version can be any git release tag, defaults to the latest available release
     version = "v1.2.3"

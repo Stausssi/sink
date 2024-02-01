@@ -6,7 +6,11 @@ use clap::Args;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+use crate::SinkDependency;
+
+pub const PLUGIN_NAME: &str = "GitHub";
+
+#[derive(Args, Serialize, Deserialize, Debug, Clone)]
 #[command(arg_required_else_help = true)]
 #[serde(rename_all(deserialize = "kebab-case", serialize = "snake_case"))]
 pub struct GitHubDependency {
@@ -16,7 +20,7 @@ pub struct GitHubDependency {
     /// If 'default-owner' is set, [owner] will default to it.
     /// Same goes for 'default-repo'.
     #[serde(skip)]
-    pub dependency: String,
+    pub dependency: String, // This is only used to parse the CLI arguments
 
     /// The local destination to download the file(s) into.
     ///
@@ -37,16 +41,21 @@ pub struct GitHubDependency {
     /// If the group does not exist, it will be created automatically.
     #[arg(short, long)]
     #[serde(skip)]
-    pub group: Option<String>,
+    pub group: Option<String>, // This is only used to parse the CLI arguments
 
+    /// The GitHub repository to download from.
+    ///
+    /// This includes the owner and the repository name in the format [owner]/[repository_name].
     #[arg(skip)]
-    pub repository: String,
+    pub repository: String, // This is only used inside the TOML
 }
 impl GitHubDependency {
     /// Split the dependency name into it's components.
     ///
     /// The name must be "owner/repo/file-pattern".
     /// This can be ensured via validate().
+    ///
+    /// TODO: Validate in combination with Sink TOML
     pub fn parts(&self) -> Result<_DependencyParts> {
         match self.dependency.matches('/').count() {
             0 | 2 => Ok(match self.dependency.rsplit_once('/') {
@@ -70,6 +79,7 @@ impl Default for GitHubDependency {
         }
     }
 }
+impl SinkDependency for GitHubDependency {}
 
 /// The two components of a GitHub dependency.
 ///
@@ -127,25 +137,19 @@ pub mod toml {
 /* ---------- [ Functions ] ---------- */
 
 mod functions {
-    use std::collections::HashMap;
-
     use anyhow::Result;
     use log::{error, info};
 
     extern crate toml as ex_toml;
 
-    use super::toml;
-    use crate::{
-        github::GitHubDependency,
-        toml::{DependencyContainer, DependencyType},
-        SinkError, SinkTOML,
-    };
+    use super::{toml, PLUGIN_NAME};
+    use crate::{toml::Dependency, SinkError, SinkTOML};
 
     const KEY_REPOSITORY: &str = "repository";
     const KEY_VERSION: &str = "version";
     const KEY_DESTINATION: &str = "destination";
 
-    fn _add(sink_toml: &mut SinkTOML, dependency: &super::GitHubDependency) -> Result<()> {
+    fn _add(sink_toml: &mut SinkTOML, dependency: &mut super::GitHubDependency) -> Result<()> {
         info!("Adding {}@{}...", dependency.dependency, dependency.version);
 
         let github_options = sink_toml
@@ -160,15 +164,27 @@ mod functions {
                 repository = match parts.0 {
                     Some(value) => value,
                     None => {
-                        match &github_options.default_repository {
+                        let default_owner = match &github_options.default_owner {
+                            Some(value) => String::from(value),
+                            None => {
+                                return Err(anyhow::anyhow!(
+                                    "No owner provided and default-owner is also not set!"
+                                ));
+                            }
+                        };
+                        let default_repository = match &github_options.default_repository {
                             Some(value) => String::from(value),
                             None => {
                                 return Err(anyhow::anyhow!("No repository provided and default-repository is also not set!"));
                             }
-                        }
+                        };
+
+                        format!("{}/{}", default_owner, default_repository)
                     }
                 };
                 file_pattern = parts.1;
+
+                dependency.repository = repository.clone();
             }
             Err(e) => {
                 return Err(e);
@@ -178,44 +194,30 @@ mod functions {
         // Check if it can be installed
         download(dependency)?;
 
-        // Add to sink TOML
-        sink_toml.formatted["GitHub"]["dependencies"][&file_pattern] = toml_edit::Item::Table({
+        // Create objects to reference later on
+        let new_dependency = Dependency::Full(dependency.to_owned());
+        let formatted_value = toml_edit::Item::Table({
             let mut new_table = toml_edit::Table::new();
-            new_table.insert(KEY_REPOSITORY, toml_edit::value(repository.clone()));
+            new_table.insert(KEY_REPOSITORY, toml_edit::value(repository));
             new_table.insert(KEY_VERSION, toml_edit::value(dependency.version.clone()));
             new_table.insert(
                 KEY_DESTINATION,
                 toml_edit::value(dependency.destination.display().to_string()),
             );
-
             new_table
         });
 
-        match &github_options.sink_options.dependencies {
-            Some(dependencies) => match dependencies {
-                DependencyType::Grouped(dependencies) => {
-                    Ok(())
-                }
-                DependencyType::Singular(dependencies) => {
-                    Ok(())
-                }
-                DependencyType::Invalid(_) => {
-                    Err(anyhow::anyhow!("Current GitHub configuration contains invalid entries. Please fix them before adding new ones!"))
-                }
-            },
-            None => match &dependency.group {
-                Some(group) => {
-                    Ok(())
-                }
-                None => {
-                    Ok(())
-                }
-            },
-        }
+        sink_toml.add_dependency(
+            PLUGIN_NAME,
+            dependency.group.as_ref(),
+            new_dependency,
+            &file_pattern,
+            formatted_value,
+        )
     }
     /// Add a dependency.
-    pub fn add(sink_toml: &mut SinkTOML, dependency: &super::GitHubDependency) {
-        match _add(sink_toml, dependency) {
+    pub fn add(sink_toml: &mut SinkTOML, mut dependency: super::GitHubDependency) {
+        match _add(sink_toml, &mut dependency) {
             Ok(_) => {
                 info!("Added {}!", dependency.dependency);
             }
