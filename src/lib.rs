@@ -31,14 +31,13 @@ pub mod errors {
 /* ---------- [ TOML ] ---------- */
 pub mod toml {
     use anyhow::Result;
-    use log::{debug, info, warn, error};
+    use log::{debug, error, info, warn};
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
     use std::fs::{self};
     use std::path::{Path, PathBuf};
     use toml::Table;
     use toml_edit::{self, Document};
-
 
     use super::SinkDependency;
 
@@ -155,8 +154,10 @@ pub mod toml {
             // 1. Given via argument
             // 2. Default group of GitHub
             // 3. Default group of global TOML
-            let dependency_group =
-                group.or(sink_options.default_group.as_ref().or(self.default_group.as_ref()));
+            let dependency_group = group.or(sink_options
+                .default_group
+                .as_ref()
+                .or(self.default_group.as_ref()));
 
             // Create object to reference later on
             let new_container = DependencyContainer {
@@ -176,15 +177,15 @@ pub mod toml {
                 Some(dependency_type) => match dependency_type {
 
                     // Existing dependencies are grouped
-                    DependencyType::Grouped(grouped_containers) => 
+                    DependencyType::Grouped(grouped_containers) =>
                         match dependency_group {
 
                             // Group was given via the CLI or default-group is set
-                            Some(final_group) =>{ 
+                            Some(final_group) => {
                                 formatted_group = Some(final_group.clone());
 
                                 match grouped_containers.get_mut(final_group) {
-    
+
                                     // Given group already exists
                                     Some(existing_dependencies) => {
                                         if existing_dependencies.dependencies.get(dependency_key).is_some() {
@@ -192,19 +193,18 @@ pub mod toml {
                                         }
                                         existing_dependencies.dependencies.insert(String::from(dependency_key), dependency.clone());
                                     },
-        
+
                                     // Given group does not exist and has to be created anew
                                     None => {
                                         grouped_containers.insert(String::from(final_group), new_container);
                                     }
                                 };
                             },
-    
+
                             // No group given via CLI and no default-group exists in any scope
                             None => return Err(anyhow::anyhow!("Cannot add ungrouped dependency to grouped dependencies if default-group is not set!"))
                         }
-                    
-    
+
                     // Dependencies are not grouped
                     DependencyType::Singular(container) => match container.dependencies.get(dependency_key) {
 
@@ -223,13 +223,13 @@ pub mod toml {
                             }
                         }
                     }
-    
+
                     // Invalid dependency structure in TOML
                     DependencyType::Invalid(_) => {
                         return Err(anyhow::anyhow!("Current {plugin_name} configuration contains invalid entries. Please fix them before adding new ones!"))
                     }
                 },
-    
+
                 // This is the first dependency
                 None => sink_options.dependencies = Some(
                     match dependency_group {
@@ -237,9 +237,9 @@ pub mod toml {
                         Some(group) => {
                             let mut new_map = HashMap::new();
                             new_map.insert(String::from(group), new_container);
-                            
+
                             formatted_group = Some(group.clone());
-                            
+
                             DependencyType::Grouped(new_map)
                         }
                         // Create singular dependency container
