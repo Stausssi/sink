@@ -116,6 +116,7 @@ pub mod toml {
 
             Ok(sink_toml)
         }
+        /// Try loading a sink TOML from a file.
         pub fn from_file(path: &str) -> Result<SinkTOML, SinkError> {
             match SinkTOML::_from_file(path) {
                 Ok(sink_toml) => Ok(sink_toml),
@@ -123,7 +124,12 @@ pub mod toml {
             }
         }
 
-        pub fn _extend_formatted(
+        /// Extend the formatted TOML contents with a new item.
+        ///
+        /// This is usually used for a new dependency.
+        /// If `group` is `Some()`, the dependency will be added to the given group.
+        /// Otherwise, it will be added to no group.
+        fn extend_formatted(
             &mut self,
             plugin_name: &str,
             group: Option<String>,
@@ -140,10 +146,23 @@ pub mod toml {
             }
         }
 
+        /// Get the default dependency group in the following order:
+        /// 1. Default group of the plugin
+        /// 2. Default group of the global TOML
+        pub fn get_default_dependency_group<T: SinkDependency>(
+            &self,
+            plugin_options: &PluginOptions<T>,
+        ) -> Option<String> {
+            plugin_options
+                .default_group
+                .clone()
+                .or(self.default_group.clone())
+        }
+
         pub fn add_dependency(
             &mut self,
             plugin_name: &str,
-            group: Option<&String>,
+            group: Option<String>,
             dependency: Dependency<github::GitHubDependency>,
             dependency_key: &str,
             formatted_value: toml_edit::Item,
@@ -154,10 +173,7 @@ pub mod toml {
             // 1. Given via argument
             // 2. Default group of GitHub
             // 3. Default group of global TOML
-            let dependency_group = group.or(sink_options
-                .default_group
-                .as_ref()
-                .or(self.default_group.as_ref()));
+            let dependency_group = group.or(self.get_default_dependency_group(sink_options));
 
             // Create object to reference later on
             let new_container = DependencyContainer {
@@ -184,7 +200,7 @@ pub mod toml {
                             Some(final_group) => {
                                 formatted_group = Some(final_group.clone());
 
-                                match grouped_containers.get_mut(final_group) {
+                                match grouped_containers.get_mut(&final_group) {
 
                                     // Given group already exists
                                     Some(existing_dependencies) => {
@@ -250,7 +266,7 @@ pub mod toml {
                 )
             }
 
-            self._extend_formatted(
+            self.extend_formatted(
                 plugin_name,
                 formatted_group,
                 dependency_key,

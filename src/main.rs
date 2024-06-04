@@ -46,7 +46,4 @@ fn main() {
             }
         },
     }
-
-    debug!("After CLI: {:#?}", sink_toml);
-    debug!("After CLI: {}", sink_toml.to_string());
 }
