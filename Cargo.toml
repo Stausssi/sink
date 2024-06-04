@@ -3,7 +3,7 @@ name        = "sink"
 version     = "0.1.0"
 edition     = "2021"
 authors     = ["Stausssi"]
-description = "Universal, extensible package manager."
+description = "Package manager for GitHub release assets"
 license     = "MIT"
 repository  = "https://github.com/Stausssi/sink"
 
