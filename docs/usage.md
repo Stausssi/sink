@@ -19,12 +19,13 @@ sink
     config              Interact with the sink TOML
         -a, --all:      DEBUGGING ONLY: Shows the entire config (as a structure)
         -t, --toml:     DEBUGGING ONLY: Shows the entire config as TOML (with includes resolved)
+        -l, --list:     List all dependencies
         -u, --update:   Update the value of a config field. This is not intended to be used on dependencies
 
     install             Install dependencies
         -s, --sink:     Install based on sink.lock
 
-    add <dependency>                Add and install a dependency in the form of 'owner/repo/dependency'
+    add <dependency>                Add and install a dependency in the form of 'owner/repo:dependency'
         -d, --dest, --destination:  Optional, The local destination to download the file(s) into
         -v, --version:              Optional, The version (git tag) to download
         
