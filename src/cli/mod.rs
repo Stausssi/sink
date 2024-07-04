@@ -74,7 +74,7 @@ pub struct SubcommandInstall {
     pub sink: bool,
 }
 
-#[derive(Args)]
+#[derive(Args, Debug)]
 #[command(arg_required_else_help = true)]
 pub struct SubcommandAdd {
     /// The dependency to add.
@@ -96,9 +96,15 @@ pub struct SubcommandAdd {
     /// TODO: Test if version works with the default version flag
     #[arg(short, long)]
     version: Option<String>,
+
+    /// Whether to skip adding the downloaded asset(s) to the gitignore.
+    ///
+    /// Defaults to false.
+    #[arg(long)]
+    no_gitignore: bool,
 }
 
-#[derive(Args)]
+#[derive(Args, Debug)]
 #[command(arg_required_else_help = true)]
 pub struct SubcommandRemove {
     /// The dependency to remove.

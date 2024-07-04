@@ -1,8 +1,5 @@
-# The default owner to fall back to if not explicitly set
+# Optional: The default owner to fall back to if not explicitly set
 default-owner = "Stausssi"
-
-# The default repository if not specified in the asset
-default-repository = "sink"
 
 # With optional includes you can split the dependencies into multiple files
 includes = [
@@ -21,6 +18,8 @@ includes = [
     # If no owner is specified, the default owner is used
     origin = "Stausssi/Stausssi"
     # Version can be any git release tag, defaults to the latest available release if not set
-    version = "v0.0.1"
+    version = "latest"
     # The destination to download the file(s) to
     destination = "./imported/"
+    # Whether the file should be put into the .gitignore
+    gitignore = true
