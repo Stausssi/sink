@@ -1,5 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
+use crate::github;
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None )]
 #[command(help_expected = true)]
@@ -65,7 +67,7 @@ pub struct SubcommandConfig {
 }
 
 #[derive(Args, Debug)]
-#[command(arg_required_else_help = true)]
+#[command(arg_required_else_help = false)]
 pub struct SubcommandInstall {
     /// Install based on ``sink.lock``.
     ///
@@ -82,26 +84,35 @@ pub struct SubcommandAdd {
     /// Supposed to be in the form of 'owner/repository:dependency'.
     /// The 'owner/repository' part will default to the default owner and repository, if set.
     /// TODO: Use an enum for this
-    dependency: String,
+    pub dependency: String,
 
     /// The local destination to download the dependency to.
     ///
     /// This is relative to the directory the 'sink.toml' is in.
-    #[arg(short, long = "dest", long = "destination")]
-    destination: Option<String>,
+    #[arg(short, long, alias = "dest")]
+    pub destination: Option<String>,
 
     /// The version to download.
     ///
-    /// This is the git tag to download.
-    /// TODO: Test if version works with the default version flag
-    #[arg(short, long)]
-    version: Option<String>,
+    /// Defaults to 'latest'.
+    ///
+    /// Possible values: ['latest', 'prerelease', specific tag (e.g. 'v1.0.0')]
+    #[arg(short, long, value_parser = github::GitHubVersion::parse_cli)]
+    pub version: Option<github::GitHubVersion>,
 
     /// Whether to skip adding the downloaded asset(s) to the gitignore.
     ///
     /// Defaults to false.
     #[arg(long)]
-    no_gitignore: bool,
+    pub no_gitignore: bool,
+
+    /// Whether to add the dependency in the short form.
+    ///
+    /// This will add a single line with just the version to the dependencies.
+    /// Conflicts with both 'destination' and 'no_gitignore'.
+    /// TODO: Maybe determine this automatically?
+    #[arg(long, conflicts_with_all = ["destination", "no_gitignore"])]
+    pub short: bool,
 }
 
 #[derive(Args, Debug)]

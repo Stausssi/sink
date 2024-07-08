@@ -1,5 +1,3 @@
-use std::fmt::Display;
-use std::path::Path;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -30,7 +28,7 @@ fn main() {
         return;
     }
 
-    let mut sink_toml = sink_toml.unwrap();
+    let sink_toml = sink_toml.unwrap();
     debug!("Loaded sink TOML from '{}'!", path.display());
 
     match cli.command {
@@ -45,7 +43,27 @@ fn main() {
             info!("{:#?}", params);
         }
         cli::SinkSubcommands::Add(params) => {
-            info!("{:#?}", params);
+            match github::GitHubDependency::new(
+                params.dependency,
+                params.destination,
+                params.version,
+                !params.no_gitignore,
+                &sink_toml.default_owner,
+            ) {
+                Ok(dependency) => {
+                    match github::add(sink_toml, dependency, params.short) {
+                        Ok(new_toml) => {
+                            debug!("{}", new_toml.to_toml());
+                        }
+                        Err(e) => {
+                            error!("{e}");
+                        }
+                    };
+                }
+                Err(sink_err) => {
+                    error!("{sink_err}");
+                }
+            }
         }
         cli::SinkSubcommands::Remove(params) => {
             info!("{:#?}", params);

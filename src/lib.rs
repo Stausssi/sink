@@ -80,8 +80,6 @@ pub mod toml {
         ///
         /// This checks for missing owner specification, etc.
         fn _validate_toml_semantics(&self) -> Result<()> {
-            let has_default_owner = self.default_owner.is_some();
-
             Ok(())
         }
 
