@@ -18,9 +18,9 @@ pub struct SinkCLI {
 
     /// Path to the sink TOML file to use.
     ///
-    /// If not provided, it will look for a ``sink.toml`` in the current directory.
-    #[arg(short, long, global = true)]
-    pub file: Option<String>,
+    /// This is relative to the current working directory.
+    #[arg(short, long, global = true, default_value = "sink.toml")]
+    pub file: String,
 }
 
 #[derive(Subcommand)]

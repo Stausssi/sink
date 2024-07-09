@@ -20,8 +20,15 @@ fn main() {
     }
 
     // Load sink TOML
-    let path = &PathBuf::from(&cli.file.unwrap_or(String::from("docs/sink_example.toml")));
-    let sink_toml = SinkTOML::from_file(path);
+    let mut path = PathBuf::from(&cli.file);
+    if !path.exists() {
+        debug!(
+            "'{}' does not exist, failing back to 'docs/sink_example.toml'!",
+            path.display()
+        );
+        path = PathBuf::from("docs/sink_example.toml");
+    }
+    let sink_toml = SinkTOML::from_file(&path);
 
     if let Err(sink_err) = sink_toml {
         error!("{sink_err}");
