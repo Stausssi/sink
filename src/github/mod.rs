@@ -133,11 +133,7 @@ impl From<&str> for GitHubVersion {
 }
 
 /* ---------- [ Functions ] ---------- */
-fn _add(
-    mut sink_toml: SinkTOML,
-    dependency: GitHubDependency,
-    short_form: bool,
-) -> Result<SinkTOML> {
+fn _add(sink_toml: SinkTOML, dependency: GitHubDependency, short_form: bool) -> Result<SinkTOML> {
     let _full_name = dependency.get_full_name();
     info!("Adding {_full_name}@{}...", dependency.version);
 
@@ -149,43 +145,39 @@ fn _add(
         return Err(anyhow::anyhow!("Invalid dependency: '{_full_name}'!"));
     }
 
-    // Check if it can be installed
-    download(&dependency)?;
-
-    // Add the dependency to sink TOML
-    // Both formatted and map
+    // Fail if the dependency already exists
     if sink_toml.dependencies.contains_key(&dependency.name) {
         return Err(anyhow::anyhow!("Dependency '{_full_name}' already exists!"));
     }
 
-    match short_form {
-        true => {
-            sink_toml.dependencies.insert(
-                dependency.name.clone(),
-                DependencyType::Version(dependency.version.clone()),
-            );
-            sink_toml.formatted["dependencies"][dependency.name] =
-                toml_edit::value(dependency.version.to_string());
-        }
-        false => {
-            sink_toml.dependencies.insert(
-                dependency.name.clone(),
-                DependencyType::Full(dependency.clone()),
-            );
+    // Check if it can be installed
+    download(&dependency)?;
 
-            let mut table = toml_edit::table();
-            table["origin"] = toml_edit::value(dependency.origin);
-            table["version"] = toml_edit::value(dependency.version.to_string());
-            table["destination"] = toml_edit::value(dependency.destination.display().to_string());
-            table["gitignore"] = toml_edit::value(dependency.gitignore);
+    // Add the dependency to sink TOML
+    let dependency_type;
+    let formatted_value;
+    if short_form {
+        dependency_type = DependencyType::Version(dependency.version.clone());
+        formatted_value = toml_edit::value(dependency.version.to_string())
+    } else {
+        let dep_clone = dependency.clone();
+        let mut table = toml_edit::table();
+        table["origin"] = toml_edit::value(dep_clone.origin.clone());
+        table["version"] = toml_edit::value(dep_clone.version.to_string());
+        table["destination"] = toml_edit::value(dep_clone.destination.display().to_string());
+        table["gitignore"] = toml_edit::value(dep_clone.gitignore);
 
-            sink_toml.formatted["dependencies"][dependency.name] = table;
-        }
+        dependency_type = DependencyType::Full(dep_clone);
+        formatted_value = table;
     };
 
-    info!("Added {_full_name}!");
-
-    Ok(sink_toml)
+    match sink_toml.add_dependency(dependency, dependency_type, formatted_value) {
+        Ok(sink_toml) => {
+            info!("Added {_full_name}!");
+            Ok(sink_toml)
+        }
+        Err(e) => Err(e),
+    }
 }
 /// Add a dependency.
 pub fn add(

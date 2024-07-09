@@ -146,6 +146,46 @@ pub mod toml {
         pub fn to_toml(&self) -> String {
             self.formatted.to_string()
         }
+
+        fn _save(&self) -> Result<()> {
+            debug!("Saving sink TOML to '{}'...", self.path.display());
+
+            fs::write(&self.path, self.to_toml())?;
+
+            debug!("Saving done!");
+
+            Ok(())
+        }
+
+        /// Save the current sink TOML to the file.
+        ///
+        /// This writes the contents from [`SinkTOML::to_toml()`] back to the file at [`SinkTOML::path`].
+        fn save(&self) -> Result<()> {
+            match self._save() {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e.context("Failed to save Sink TOML!")),
+            }
+        }
+
+        /// Add a dependency to the sink TOML.
+        ///
+        /// This will add the dependency to the sink TOML (incl. [`SinkTOML::formatted`]) and save it to the file.
+        /// It does **not** perform any validation on the dependency.
+        // TODO: Validate here?
+        pub fn add_dependency(
+            mut self,
+            dependency: github::GitHubDependency,
+            dependency_type: DependencyType,
+            formatted_value: toml_edit::Item,
+        ) -> Result<Self> {
+            self.dependencies
+                .insert(dependency.name.clone(), dependency_type);
+            self.formatted["dependencies"][dependency.name] = formatted_value;
+
+            self.save()?;
+
+            Ok(self)
+        }
     }
 
     #[derive(Serialize, Deserialize, Debug)]

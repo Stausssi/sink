@@ -58,14 +58,9 @@ fn main() {
                 &sink_toml.default_owner,
             ) {
                 Ok(dependency) => {
-                    match github::add(sink_toml, dependency, params.short) {
-                        Ok(new_toml) => {
-                            debug!("{}", new_toml.to_toml());
-                        }
-                        Err(e) => {
-                            error!("{e}");
-                        }
-                    };
+                    if let Err(e) = github::add(sink_toml, dependency, params.short) {
+                        error!("{e}");
+                    }
                 }
                 Err(sink_err) => {
                     error!("{sink_err}");
@@ -75,5 +70,5 @@ fn main() {
         cli::SinkSubcommands::Remove(params) => {
             info!("{:#?}", params);
         }
-    }
+    };
 }
