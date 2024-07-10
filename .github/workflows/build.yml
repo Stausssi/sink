@@ -1,0 +1,34 @@
+name: Build sink binary
+
+on:
+    push:
+      branches: [ "main" ]
+    pull_request:
+      branches: [ "main" ]
+    workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check code quality
+    uses: Stausssi/sink/.github/workflows/check-code-quality.yml@rollback
+    secrets: inherit
+
+  build:
+    name: Build sink binary
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+      
+      - name: Build release
+        run: cargo build --release --verbose
+
+      - name: Archive release
+        uses: actions/upload-artifact@v4
+        with:
+          path: target/release/sink
+          name: sink

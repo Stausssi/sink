@@ -3,10 +3,15 @@ run-name: Check code quality for ${{ github.ref }}
 
 on: 
   push:
-  workflow_dispatch: 
+  workflow_dispatch:
+  workflow_call:
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   check-rust:
+    name: Check code quality
     runs-on: ubuntu-latest
     steps:
       - name: Clone repository
@@ -23,3 +28,7 @@ jobs:
       - name: Check linter (clippy)
         if: always()
         run: cargo clippy --all-targets --all-features
+
+      - name: Run tests
+        if: always()
+        run: cargo test --verbose
