@@ -14,7 +14,6 @@ sink
     --help:         Show this message
     --verbose:      Increase verbosity of sink
     --file:         The sink file to use. Defaults to 'sink.toml'.
-                    Might be used to read from a 'pyproject.toml' or 'Cargo.toml' in the future.
 
     config              Interact with the sink TOML
         -a, --all:      DEBUGGING ONLY: Shows the entire config (as a structure)
@@ -22,13 +21,13 @@ sink
         -l, --list:     List all dependencies
         -u, --update:   Update the value of a config field. This is not intended to be used on dependencies
 
-    install             Install dependencies
-        -s, --sink:     Install based on sink.lock
+    install             Install all dependencies
+        -s, --sink:     Optional, Install based on sink.lock
 
     add <dependency>                Add and install a dependency in the form of 'owner/repo:dependency'
         -d, --dest, --destination:  Optional, The local destination to download the file(s) into
         -v, --version:              Optional, The version (git tag) to download
         --no-gitignore:             Optional, Do not add the dependency to the .gitignore file
         
-    remove <dependency>             Remove and uninstall a dependency in the form of 'owner/repo/dependency'
+    remove <dependency>             Remove and uninstall a dependency in the form of 'owner/repo:dependency'
 ```

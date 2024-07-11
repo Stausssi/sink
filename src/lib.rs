@@ -53,7 +53,7 @@ pub mod toml {
         pub includes: Vec<PathBuf>,
 
         /// The actual dependencies.
-        pub dependencies: HashMap<String, DependencyType>,
+        pub dependencies: HashMap<github::GitHubPathspec, DependencyType>,
 
         /// Contains the path to the this sink TOML
         #[serde(skip)]
@@ -73,6 +73,7 @@ pub mod toml {
                     return Err(anyhow::anyhow!("Invalid dependency entry for '{key}'!"));
                 }
             }
+
             Ok(())
         }
 
@@ -179,8 +180,8 @@ pub mod toml {
             formatted_value: toml_edit::Item,
         ) -> Result<Self> {
             self.dependencies
-                .insert(dependency.name.clone(), dependency_type);
-            self.formatted["dependencies"][dependency.name] = formatted_value;
+                .insert(dependency.pathspec.clone(), dependency_type);
+            self.formatted["dependencies"][dependency.pathspec.to_string()] = formatted_value;
 
             self.save()?;
 
@@ -197,7 +198,7 @@ pub mod toml {
         /// Full declaration with all fields specified
         Full(github::GitHubDependency),
 
-        /// Catch all potential TOML mismatches
+        /// Catch all potential TOML mismatches to better pinpoint the problem
         Invalid(toml::Value),
     }
 }

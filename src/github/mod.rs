@@ -1,5 +1,6 @@
 use anyhow::Result;
 use log::info;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, path::PathBuf};
 
@@ -15,17 +16,11 @@ fn _default_true() -> bool {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all(deserialize = "kebab-case", serialize = "snake_case"))]
 pub struct GitHubDependency {
-    /// The origin of the dependency.
+    /// The full pathspec of the dependency.
     ///
-    /// This has to be in the 'owner/repo' format.
-    /// TODO: Use an [`enum`] for this.
-    pub origin: String,
-
-    /// The name of the dependency.
-    ///
-    /// This is the name of the asset, supporting glob patterns.
+    /// See [`GitHubPathspec`].
     #[serde(skip)]
-    pub name: String,
+    pub pathspec: GitHubPathspec,
 
     /// The local destination to download the file(s) into.
     ///
@@ -53,49 +48,29 @@ impl GitHubDependency {
         gitignore: bool,
         default_owner: &Option<String>,
     ) -> Result<Self> {
-        let (origin, name) = match dependency.splitn(3, '/').collect::<Vec<&str>>()[..] {
-            [owner, repo, pattern] => (format!("{}/{}", owner, repo), pattern),
-            [repo, pattern] => {
+        let pathspec = match GitHubPathspec::try_from(dependency.clone()) {
+            Ok(pathspec) => pathspec,
+            Err(e) => {
                 if default_owner.is_none() {
-                    return Err(anyhow::anyhow!(
-                        "No default owner set and not given explicitly!"
-                    ));
+                    return Err(e);
                 }
-                (
-                    format!("{}/{}", default_owner.as_ref().unwrap(), repo),
-                    pattern,
-                )
-            }
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Missing owner and/or repository specification!"
-                ))
+                match GitHubPathspec::try_from(format!(
+                    "{}/{}",
+                    default_owner.as_ref().unwrap(),
+                    dependency
+                )) {
+                    Ok(pathspec) => pathspec,
+                    Err(e) => return Err(e),
+                }
             }
         };
 
         Ok(GitHubDependency {
-            origin,
-            name: String::from(name),
+            pathspec,
             destination: PathBuf::from(destination.unwrap_or(String::from("."))),
             version: version.unwrap_or(GitHubVersion::Latest),
             gitignore,
         })
-    }
-
-    /// Get the full name (`owner/repo/file-pattern`) of the dependency
-    fn get_full_name(&self) -> String {
-        format!("{}/{}", self.origin, self.name)
-    }
-}
-impl Default for GitHubDependency {
-    fn default() -> Self {
-        GitHubDependency {
-            origin: String::from(""),
-            name: String::from(""),
-            destination: PathBuf::from("."),
-            version: GitHubVersion::Latest,
-            gitignore: true,
-        }
     }
 }
 
@@ -132,22 +107,59 @@ impl From<&str> for GitHubVersion {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Default)]
+#[serde(try_from = "String", into = "String")]
+pub struct GitHubPathspec {
+    owner: String,
+    repository: String,
+    pattern: String,
+}
+impl GitHubPathspec {
+    pub fn is_valid(&self) -> bool {
+        !self.owner.is_empty() && !self.repository.is_empty() && !self.pattern.is_empty()
+    }
+}
+impl Display for GitHubPathspec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", String::from(self.clone()))
+    }
+}
+impl From<GitHubPathspec> for String {
+    fn from(value: GitHubPathspec) -> Self {
+        format!("{}/{}:{}", value.owner, value.repository, value.pattern)
+    }
+}
+impl TryFrom<String> for GitHubPathspec {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let re = Regex::new(r"^(?<owner>.+)/(?<repo>.+):(?<pattern>.+)$").unwrap();
+        match re.captures(&value) {
+            Some(captures) => Ok(GitHubPathspec {
+                owner: String::from(&captures["owner"]),
+                repository: String::from(&captures["repo"]),
+                pattern: String::from(&captures["pattern"]),
+            }),
+            None => Err(anyhow::anyhow!("Invalid dependency path specification: '{value}'! Please ensure it's in the form of 'owner/repo:pattern'!")),
+        }
+    }
+}
+
 /* ---------- [ Functions ] ---------- */
 fn _add(sink_toml: SinkTOML, dependency: GitHubDependency, short_form: bool) -> Result<SinkTOML> {
-    let _full_name = dependency.get_full_name();
-    info!("Adding {_full_name}@{}...", dependency.version);
-
-    // Fail if the dependency is not fully specified.
-    // It must:
-    // - Have a valid origin (owner/repo) format
-    // - Have a non-empty name
-    if !dependency.origin.contains('/') || dependency.name.is_empty() {
-        return Err(anyhow::anyhow!("Invalid dependency: '{_full_name}'!"));
+    if !dependency.pathspec.is_valid() {
+        return Err(anyhow::anyhow!(
+            "Invalid dependency: '{}'!",
+            dependency.pathspec
+        ));
     }
 
+    let _pathspec = dependency.pathspec.to_string();
+    info!("Adding {_pathspec}@{}...", dependency.version);
+
     // Fail if the dependency already exists
-    if sink_toml.dependencies.contains_key(&dependency.name) {
-        return Err(anyhow::anyhow!("Dependency '{_full_name}' already exists!"));
+    if sink_toml.dependencies.contains_key(&dependency.pathspec) {
+        return Err(anyhow::anyhow!("Dependency '{_pathspec}' already exists!"));
     }
 
     // Check if it can be installed
@@ -162,7 +174,6 @@ fn _add(sink_toml: SinkTOML, dependency: GitHubDependency, short_form: bool) -> 
     } else {
         let dep_clone = dependency.clone();
         let mut table = toml_edit::table();
-        table["origin"] = toml_edit::value(dep_clone.origin.clone());
         table["version"] = toml_edit::value(dep_clone.version.to_string());
         table["destination"] = toml_edit::value(dep_clone.destination.display().to_string());
         table["gitignore"] = toml_edit::value(dep_clone.gitignore);
@@ -173,7 +184,7 @@ fn _add(sink_toml: SinkTOML, dependency: GitHubDependency, short_form: bool) -> 
 
     match sink_toml.add_dependency(dependency, dependency_type, formatted_value) {
         Ok(sink_toml) => {
-            info!("Added {_full_name}!");
+            info!("Added {_pathspec}!");
             Ok(sink_toml)
         }
         Err(e) => Err(e),
@@ -197,7 +208,7 @@ pub fn add(
 pub fn download(dependency: &GitHubDependency) -> Result<()> {
     info!(
         "Downloading {}@{} into '{}' ...",
-        dependency.get_full_name(),
+        dependency.pathspec,
         dependency.version,
         dependency.destination.display()
     );
@@ -209,7 +220,7 @@ pub fn download(dependency: &GitHubDependency) -> Result<()> {
 
     info!(
         "Downloaded {}@{} into '{}'!",
-        dependency.get_full_name(),
+        dependency.pathspec,
         dependency.version,
         dependency.destination.display()
     );
@@ -222,75 +233,115 @@ pub fn download(dependency: &GitHubDependency) -> Result<()> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_full_name() {
-        let dependency = GitHubDependency {
-            origin: String::from("owner/repo"),
-            name: String::from("file-pattern"),
-            destination: PathBuf::new(),
-            version: GitHubVersion::Latest,
-            gitignore: true,
-        };
+    mod test_dependency {
+        use super::*;
 
-        assert_eq!(dependency.get_full_name(), "owner/repo/file-pattern");
+        #[test]
+        fn test_new_full() {
+            let dependency = GitHubDependency::new(
+                String::from("owner/repo:file-pattern"),
+                Some(String::from("destination")),
+                Some(GitHubVersion::Tag(String::from("v1.0.0"))),
+                false,
+                &None,
+            )
+            .unwrap();
+
+            assert_eq!(dependency.pathspec.to_string(), "owner/repo:file-pattern");
+            assert_eq!(dependency.destination, PathBuf::from("destination"));
+            assert_eq!(dependency.version.to_string(), String::from("v1.0.0"));
+            assert!(!dependency.gitignore);
+        }
+
+        #[test]
+        fn test_new_invalid() {
+            let dependency = GitHubDependency::new(
+                String::from("pattern"),
+                Some(String::from("destination")),
+                Some(GitHubVersion::Tag(String::from("v1.0.0"))),
+                false,
+                &None,
+            );
+
+            assert!(dependency.is_err());
+
+            let dependency = GitHubDependency::new(
+                String::from("repo/pattern"),
+                Some(String::from("destination")),
+                Some(GitHubVersion::Tag(String::from("v1.0.0"))),
+                false,
+                &None,
+            );
+
+            assert!(dependency.is_err());
+
+            let dependency = GitHubDependency::new(
+                String::from("owner/repo/pattern"),
+                Some(String::from("destination")),
+                Some(GitHubVersion::Tag(String::from("v1.0.0"))),
+                false,
+                &None,
+            );
+
+            assert!(dependency.is_err());
+        }
+
+        #[test]
+        fn test_new_default() {
+            let dependency = GitHubDependency::new(
+                String::from("repo:pattern"),
+                None,
+                None,
+                true,
+                &Some(String::from("owner")),
+            )
+            .unwrap();
+
+            assert_eq!(dependency.pathspec.to_string(), "owner/repo:pattern");
+            assert_eq!(dependency.destination, PathBuf::from("."));
+            assert_eq!(dependency.version.to_string(), String::from("latest"));
+            assert!(dependency.gitignore);
+        }
     }
 
-    #[test]
-    fn test_new_dependency_full() {
-        let dependency = GitHubDependency::new(
-            String::from("owner/repo/file-pattern"),
-            Some(String::from("destination")),
-            Some(GitHubVersion::Tag(String::from("v1.0.0"))),
-            false,
-            &None,
-        )
-        .unwrap();
+    mod test_pathspec {
+        use super::*;
 
-        assert_eq!(dependency.origin, "owner/repo");
-        assert_eq!(dependency.name, "file-pattern");
-        assert_eq!(dependency.destination, PathBuf::from("destination"));
-        assert_eq!(dependency.version.to_string(), String::from("v1.0.0"));
-        assert!(!dependency.gitignore);
-    }
+        #[test]
+        fn test_from_string() {
+            let path_spec = GitHubPathspec::try_from(String::from("owner/repo:pattern")).unwrap();
 
-    #[test]
-    fn test_new_dependency_invalid() {
-        let dependency = GitHubDependency::new(
-            String::from("pattern"),
-            Some(String::from("destination")),
-            Some(GitHubVersion::Tag(String::from("v1.0.0"))),
-            false,
-            &None,
-        );
+            assert_eq!(path_spec.owner, "owner");
+            assert_eq!(path_spec.repository, "repo");
+            assert_eq!(path_spec.pattern, "pattern");
 
-        assert!(dependency.is_err());
+            let path_spec = GitHubPathspec::try_from(String::from(
+                "complex-owner/weird%%repo:patt[A-Z]ern*.txt",
+            ))
+            .unwrap();
 
-        let dependency = GitHubDependency::new(
-            String::from("repo/pattern"),
-            Some(String::from("destination")),
-            Some(GitHubVersion::Tag(String::from("v1.0.0"))),
-            false,
-            &None,
-        );
+            assert_eq!(path_spec.owner, "complex-owner");
+            assert_eq!(path_spec.repository, "weird%%repo");
+            assert_eq!(path_spec.pattern, "patt[A-Z]ern*.txt");
+        }
 
-        assert!(dependency.is_err());
-    }
+        #[test]
+        fn test_from_string_invalid() {
+            assert!(GitHubPathspec::try_from(String::from("owner/repo")).is_err());
+            assert!(GitHubPathspec::try_from(String::from("repo:pattern")).is_err());
+            assert!(GitHubPathspec::try_from(String::from("/:")).is_err());
+            assert!(GitHubPathspec::try_from(String::from("owner/:pattern")).is_err());
+        }
 
-    #[test]
-    fn test_new_dependency_default() {
-        let dependency = GitHubDependency::new(
-            String::from("repo/pattern"),
-            None,
-            None,
-            true,
-            &Some(String::from("owner")),
-        )
-        .unwrap();
+        #[test]
+        fn test_into_string() {
+            let path_spec = GitHubPathspec {
+                owner: String::from("owner"),
+                repository: String::from("repo"),
+                pattern: String::from("pattern"),
+            };
 
-        assert_eq!(dependency.origin, "owner/repo");
-        assert_eq!(dependency.name, "pattern");
-        assert_eq!(dependency.destination, PathBuf::from("."));
-        assert_eq!(dependency.version.to_string(), String::from("latest"));
-        assert!(dependency.gitignore);
+            assert_eq!(path_spec.to_string(), "owner/repo:pattern");
+        }
     }
 }
