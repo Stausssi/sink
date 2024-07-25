@@ -1,7 +1,7 @@
 name: Check code quality
 run-name: Check code quality for ${{ github.ref }}
 
-on: 
+on:
   push:
   workflow_dispatch:
   workflow_call:
@@ -16,11 +16,15 @@ jobs:
     steps:
       - name: Clone repository
         uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
 
       - name: Check formatting
         if: always()
         run: cargo fmt --check
-      
+
       - name: Check package
         if: always()
         run: cargo check

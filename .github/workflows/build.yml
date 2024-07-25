@@ -1,4 +1,4 @@
-name: Build sink binary
+name: Build sink binaries
 
 on:
     push:
@@ -13,22 +13,70 @@ env:
 jobs:
   check:
     name: Check code quality
+    # The dedicated PR check will run separately
+    if: github.event_name != 'pull_request'
     uses: Stausssi/sink/.github/workflows/check-code-quality.yml@rollback
     secrets: inherit
 
   build:
-    name: Build sink binary
+    name: Build ${{ matrix.TARGET}}
     needs: check
-    runs-on: ubuntu-latest
+    # check should succeed or it was skipped because it is a PR
+    if: success() || github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - TARGET: x86_64-unknown-linux-gnu
+            OS: ubuntu-latest
+          - TARGET: x86_64-unknown-linux-musl
+            OS: ubuntu-latest
+          - TARGET: aarch64-unknown-linux-gnu
+            OS: ubuntu-latest
+          - TARGET: aarch64-unknown-linux-musl
+            OS: ubuntu-latest
+          - TARGET: x86_64-pc-windows-msvc
+            OS: windows-latest
+          - TARGET: aarch64-apple-darwin
+            OS: macos-latest
+    runs-on: ${{ matrix.OS}}
+    env:
+      # Will be set to .exe for windows
+      SUFFIX: ""
     steps:
       - name: Clone repository
         uses: actions/checkout@v4
-      
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.TARGET }}
+
+      - name: Setup cross-compilation
+        if: contains(matrix.OS, 'ubuntu') && contains(matrix.TARGET, 'aarch64')
+        run: |
+          sudo apt-get install -qq crossbuild-essential-arm64 crossbuild-essential-armhf
+          echo "RUSTFLAGS=-C linker=aarch64-linux-gnu-gcc" >> ${GITHUB_ENV}
+
       - name: Build release
-        run: cargo build --release --verbose
+        run: cargo build --release --verbose --target ${{ matrix.TARGET }}
+
+      - name: Prepare release files
+        shell: bash
+        run: |
+          if [[ "${{ matrix.OS }}" =~ ^windows.*$ ]]; then
+            SUFFIX=.exe
+            echo "SUFFIX=${SUFFIX}" >> $GITHUB_ENV
+          fi
+
+          cp ./target/${{ matrix.TARGET }}/release/sink$SUFFIX ./sink-${{ matrix.TARGET }}$SUFFIX
+          tar -czf ./sink-${{ matrix.target }}.tar.gz ./sink-${{ matrix.TARGET }}$SUFFIX
 
       - name: Archive release
         uses: actions/upload-artifact@v4
         with:
-          path: target/release/sink
-          name: sink
+          path: |
+            sink-${{ matrix.TARGET }}.tar.gz
+            sink-${{ matrix.TARGET }}${{ env.SUFFIX }}
+          name: sink-${{ matrix.TARGET }}
+          if-no-files-found: error
