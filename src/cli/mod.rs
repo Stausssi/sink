@@ -125,8 +125,14 @@ pub struct SubcommandRemove {
     dependency: String,
 }
 
-#[test]
-fn verify_cli() {
-    use clap::CommandFactory;
-    SinkCLI::command().debug_assert();
+/* ---------- [ Tests ] ---------- */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_cli() {
+        use clap::CommandFactory;
+        SinkCLI::command().debug_assert();
+    }
 }
