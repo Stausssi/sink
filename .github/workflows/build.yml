@@ -6,23 +6,14 @@ on:
     pull_request:
       branches: [ "main" ]
     workflow_dispatch:
+    workflow_call:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    name: Check code quality
-    # The dedicated PR check will run separately
-    if: github.event_name != 'pull_request'
-    uses: Stausssi/sink/.github/workflows/check-code-quality.yml@rollback
-    secrets: inherit
-
   build:
     name: Build ${{ matrix.TARGET}}
-    needs: check
-    # check should succeed or it was skipped because it is a PR
-    if: success() || github.event_name == 'pull_request'
     strategy:
       fail-fast: false
       matrix:
