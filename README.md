@@ -1,8 +1,8 @@
 # sink
 
-`sink` is an universal and extensible package manager.
+`sink` is a package manager for retrieving assets from other GitHub releases.
 
-It provides limitless extensibility through a modular plugin system, supporting your programming language of choice.
+It allows for decoupled projects solely based on GitHub.
 
 ## Documentation
 
@@ -10,8 +10,9 @@ See [`docs`](docs/index.md) for detailed documentation.
 
 ## Installation
 
-- (linux)`brew`
-- `cargo`?
+TBD.
+
+Presumable prebuilt binaries and Homebrew.
 
 ## Usage
 
@@ -24,11 +25,3 @@ sink install
 The configuration of `sink` is done on a project basis via a `sink.toml` file.
 This file contains all dependencies from various sources and general configurations.
 It can also be split up into multiple files, e.g. to separate programming languages.
-
-## Plugins
-
-Plugins are essential for `sink`.
-They bridge `sink.toml` with a provider such as `pip`, `cargo`, and so on.
-
-Thus, it's also possible to convert `sink.toml` entries into the native form, e.g. `requirements.txt`, `Cargo.toml`, etc..
-This way, the default package manager (*provider*) can still be used as a fallback in environments where `sink` is not present.

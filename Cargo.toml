@@ -3,17 +3,18 @@ name        = "sink"
 version     = "0.1.0"
 edition     = "2021"
 authors     = ["Stausssi"]
-description = "Universal, extensible package manager."
+description = "Package manager for GitHub release assets"
 license     = "MIT"
 repository  = "https://github.com/Stausssi/sink"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow     = "1.0.75"
-clap       = { version = "4.4.7", features = ["derive"] }
-env_logger = "0.10.0"
-log        = "0.4.20"
-serde      = { version = "1.0.190", features = ["derive"] }
-toml       = "0.8.6"
-toml_edit  = { version = "0.21.0" }
+anyhow     = "1.0.86"
+clap       = { version = "4.5.11", features = ["derive"] }
+env_logger = "0.11.5"
+log        = "0.4.22"
+regex      = "1.10.5"
+serde      = { version = "1.0.204", features = ["derive"] }
+toml       = "0.8.16"
+toml_edit  = "0.22.17"

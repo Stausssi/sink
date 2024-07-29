@@ -1,31 +1,30 @@
-pub use functions::add;
-pub use functions::download;
-
 use anyhow::Result;
-use clap::Args;
+use log::{debug, info};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf, process::Command};
 
-use crate::SinkDependency;
+extern crate toml as ex_toml;
 
-pub const PLUGIN_NAME: &str = "GitHub";
+use crate::{toml::DependencyType, SinkTOML};
 
-#[derive(Args, Serialize, Deserialize, Debug, Clone)]
-#[command(arg_required_else_help = true)]
+/// Provides a default value of `true` for [`serde`].
+fn _default_true() -> bool {
+    true
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all(deserialize = "kebab-case", serialize = "snake_case"))]
 pub struct GitHubDependency {
-    /// The name of the dependency.
+    /// The full pathspec of the dependency.
     ///
-    /// This is expected in the format [owner]/[repo]/[file-pattern].
-    /// If 'default-owner' is set, [owner] will default to it.
-    /// Same goes for 'default-repo'.
+    /// See [`GitHubPathspec`].
     #[serde(skip)]
-    pub dependency: String, // This is only used to parse the CLI arguments
+    pub pathspec: GitHubPathspec,
 
     /// The local destination to download the file(s) into.
     ///
     /// Either an absolute path or a relative path starting from the directory of the sink TOML.
-    #[arg(short, long = "destination", alias = "dest")]
     pub destination: PathBuf,
 
     /// The version to download.
@@ -33,222 +32,352 @@ pub struct GitHubDependency {
     /// This corresponds to the git release tag.
     /// If set to 'latest', the latest release will be downloaded.
     /// If set to 'prerelease', the latest prerelease will be downloaded.
-    #[arg(short, long)]
-    pub version: String,
+    pub version: GitHubVersion,
 
-    /// The group to add the dependency to.
+    /// Whether the downloaded asset should be added to the gitignore.
     ///
-    /// If the group does not exist, it will be created automatically.
-    #[arg(short, long)]
-    #[serde(skip)]
-    pub group: Option<String>, // This is only used to parse the CLI arguments
-
-    /// The GitHub repository to download from.
-    ///
-    /// This includes the owner and the repository name in the format [owner]/[repository_name].
-    #[arg(skip)]
-    pub repository: String, // This is only used inside the TOML
+    /// This defaults to true.
+    #[serde(default = "_default_true")]
+    pub gitignore: bool,
 }
 impl GitHubDependency {
-    /// Split the dependency name into it's components.
-    ///
-    /// The name must be "owner/repo/file-pattern".
-    /// This can be ensured via validate().
-    ///
-    /// TODO: Validate in combination with Sink TOML
-    pub fn parts(&self) -> Result<_DependencyParts> {
-        match self.dependency.matches('/').count() {
-            0 | 2 => Ok(match self.dependency.rsplit_once('/') {
-                Some(parts) => _DependencyParts(Some(String::from(parts.0)), String::from(parts.1)),
-                None => _DependencyParts(None, self.dependency.clone()),
-            }),
-            c => Err(anyhow::anyhow!(
-                "Invalid number ({c}) of '/' in dependency!"
-            )),
-        }
-    }
-}
-impl Default for GitHubDependency {
-    fn default() -> Self {
-        GitHubDependency {
-            dependency: String::from(""),
-            destination: PathBuf::new(),
-            version: String::from(""),
-            group: None,
-            repository: String::from(""),
-        }
-    }
-}
-impl SinkDependency for GitHubDependency {}
-
-/// The two components of a GitHub dependency.
-///
-/// The first part is the repo in owner/repository format.
-/// The second part is the name of the dependency. It represents the file-pattern to download.
-pub struct _DependencyParts(pub Option<String>, pub String);
-
-/* ---------- [ CLI ] ---------- */
-pub mod cli {
-
-    use clap::Subcommand;
-
-    #[derive(Subcommand, Debug)]
-    #[command(arg_required_else_help = true)]
-    pub enum SubcommandGitHub {
-        /// Add and install a dependency.
-        ///
-        /// This downloads assets from GitHub releases to a local destination.
-        Add(super::GitHubDependency),
-    }
-}
-
-/* ---------- [ TOML ] ---------- */
-pub mod toml {
-    use serde::{Deserialize, Serialize};
-
-    use crate::PluginOptions;
-
-    use super::GitHubDependency;
-
-    #[derive(Serialize, Deserialize, Debug)]
-    #[serde(rename_all(deserialize = "kebab-case", serialize = "snake_case"))]
-    pub struct GitHubPluginOptions {
-        #[serde(flatten)]
-        pub sink_options: PluginOptions<GitHubDependency>,
-
-        pub default_owner: Option<String>,
-        pub default_repository: Option<String>,
-    }
-    impl Default for GitHubPluginOptions {
-        fn default() -> Self {
-            Self {
-                sink_options: PluginOptions {
-                    provider: Some(String::from("gh")),
-                    default_group: None,
-                    dependencies: None,
-                },
-                default_owner: None,
-                default_repository: None,
+    pub fn new(
+        dependency: String,
+        destination: Option<String>,
+        version: Option<GitHubVersion>,
+        gitignore: bool,
+        default_owner: &Option<String>,
+    ) -> Result<Self> {
+        let pathspec = match GitHubPathspec::try_from(dependency.clone()) {
+            Ok(pathspec) => pathspec,
+            Err(e) => {
+                if default_owner.is_none() {
+                    return Err(e);
+                }
+                match GitHubPathspec::try_from(format!(
+                    "{}/{}",
+                    default_owner.as_ref().unwrap(),
+                    dependency
+                )) {
+                    Ok(pathspec) => pathspec,
+                    Err(e) => return Err(e),
+                }
             }
+        };
+
+        Ok(GitHubDependency {
+            pathspec,
+            destination: PathBuf::from(destination.unwrap_or(String::from("."))),
+            version: version.unwrap_or(GitHubVersion::Latest),
+            gitignore,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum GitHubVersion {
+    Latest,
+    Prerelease,
+
+    #[serde(untagged)]
+    Tag(String),
+}
+impl GitHubVersion {
+    pub fn parse_cli(s: &str) -> Result<Self, String> {
+        Ok(Self::from(s))
+    }
+}
+impl Display for GitHubVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GitHubVersion::Latest => write!(f, "latest"),
+            GitHubVersion::Prerelease => write!(f, "prerelease"),
+            GitHubVersion::Tag(tag) => write!(f, "{}", tag),
+        }
+    }
+}
+impl From<&str> for GitHubVersion {
+    fn from(s: &str) -> Self {
+        match s {
+            "latest" => GitHubVersion::Latest,
+            "prerelease" => GitHubVersion::Prerelease,
+            _ => GitHubVersion::Tag(s.to_string()),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, Default)]
+#[serde(try_from = "String", into = "String")]
+pub struct GitHubPathspec {
+    owner: String,
+    repository: String,
+    pattern: String,
+}
+impl GitHubPathspec {
+    pub fn is_valid(&self) -> bool {
+        !self.owner.is_empty() && !self.repository.is_empty() && !self.pattern.is_empty()
+    }
+
+    pub fn get_full_origin(&self) -> String {
+        assert!(self.is_valid());
+        format!("{}/{}", self.owner, self.repository)
+    }
+}
+impl Display for GitHubPathspec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", String::from(self.clone()))
+    }
+}
+impl From<GitHubPathspec> for String {
+    fn from(value: GitHubPathspec) -> Self {
+        format!("{}/{}:{}", value.owner, value.repository, value.pattern)
+    }
+}
+impl TryFrom<String> for GitHubPathspec {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let re = Regex::new(r"^(?<owner>.+)/(?<repo>.+):(?<pattern>.+)$").unwrap();
+        match re.captures(&value) {
+            Some(captures) => Ok(GitHubPathspec {
+                owner: String::from(&captures["owner"]),
+                repository: String::from(&captures["repo"]),
+                pattern: String::from(&captures["pattern"]),
+            }),
+            None => Err(anyhow::anyhow!("Invalid dependency path specification: '{value}'! Please ensure it's in the form of 'owner/repo:pattern'!")),
         }
     }
 }
 
 /* ---------- [ Functions ] ---------- */
+fn _add(sink_toml: SinkTOML, dependency: GitHubDependency, short_form: bool) -> Result<SinkTOML> {
+    if !dependency.pathspec.is_valid() {
+        return Err(anyhow::anyhow!(
+            "Invalid dependency: '{}'!",
+            dependency.pathspec
+        ));
+    }
 
-mod functions {
-    use anyhow::Result;
-    use log::{error, info};
+    let _pathspec = dependency.pathspec.to_string();
+    info!("Adding {_pathspec}@{}...", dependency.version);
 
-    extern crate toml as ex_toml;
+    // Fail if the dependency already exists
+    if sink_toml.dependencies.contains_key(&dependency.pathspec) {
+        return Err(anyhow::anyhow!("Dependency '{_pathspec}' already exists!"));
+    }
 
-    use super::{toml, PLUGIN_NAME};
-    use crate::{toml::Dependency, SinkError, SinkTOML};
+    // Check if it can be installed
+    download(&dependency)?;
 
-    const KEY_REPOSITORY: &str = "repository";
-    const KEY_VERSION: &str = "version";
-    const KEY_DESTINATION: &str = "destination";
+    // Add the dependency to sink TOML
+    let dependency_type;
+    let formatted_value;
+    if short_form {
+        dependency_type = DependencyType::Version(dependency.version.clone());
+        formatted_value = toml_edit::value(dependency.version.to_string())
+    } else {
+        let dep_clone = dependency.clone();
+        let mut table = toml_edit::table();
+        table["version"] = toml_edit::value(dep_clone.version.to_string());
+        table["destination"] = toml_edit::value(dep_clone.destination.display().to_string());
+        table["gitignore"] = toml_edit::value(dep_clone.gitignore);
 
-    fn _add(sink_toml: &mut SinkTOML, dependency: &mut super::GitHubDependency) -> Result<()> {
-        info!("Adding {}@{}...", dependency.dependency, dependency.version);
+        dependency_type = DependencyType::Full(dep_clone);
+        formatted_value = table;
+    };
 
-        let github_options = sink_toml
-            .github
-            .get_or_insert(toml::GitHubPluginOptions::default());
+    match sink_toml.add_dependency(dependency, dependency_type, formatted_value) {
+        Ok(sink_toml) => {
+            info!("Added {_pathspec}!");
+            Ok(sink_toml)
+        }
+        Err(e) => Err(e),
+    }
+}
+/// Add a dependency.
+pub fn add(
+    sink_toml: SinkTOML,
+    dependency: GitHubDependency,
+    short_form: bool,
+) -> Result<SinkTOML> {
+    match _add(sink_toml, dependency, short_form) {
+        Ok(sink_toml) => Ok(sink_toml),
+        Err(e) => Err(e.context("Failed to add dependency!")),
+    }
+}
 
-        let repository;
-        let file_pattern;
+fn _download(dependency: &GitHubDependency) -> Result<()> {
+    info!(
+        "Downloading {}@{} into '{}' ...",
+        dependency.pathspec,
+        dependency.version,
+        dependency.destination.display()
+    );
 
-        match dependency.parts() {
-            Ok(parts) => {
-                repository = match parts.0 {
-                    Some(value) => value,
-                    None => {
-                        let default_owner = match &github_options.default_owner {
-                            Some(value) => String::from(value),
-                            None => {
-                                return Err(anyhow::anyhow!(
-                                    "No owner provided and default-owner is also not set!"
-                                ));
-                            }
-                        };
-                        let default_repository = match &github_options.default_repository {
-                            Some(value) => String::from(value),
-                            None => {
-                                return Err(anyhow::anyhow!("No repository provided and default-repository is also not set!"));
-                            }
-                        };
+    // Use the GH CLI to download the asset
+    let output = match Command::new("gh")
+        .arg("release")
+        .arg("download")
+        .arg("--repo")
+        .arg(dependency.pathspec.get_full_origin())
+        .arg("--pattern")
+        .arg(dependency.pathspec.pattern.clone())
+        .arg("--dir")
+        .arg(dependency.destination.clone())
+        .output()
+    {
+        Ok(output) => output,
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "Failed to invoke GitHub CLI: {e}. Is it installed?"
+            ))
+        }
+    };
 
-                        format!("{}/{}", default_owner, default_repository)
-                    }
-                };
-                file_pattern = parts.1;
+    let stdout = String::from_utf8(output.stdout)?;
+    let stdout = stdout.trim();
+    let stderr = String::from_utf8(output.stderr)?;
+    let stderr = stderr.trim();
 
-                dependency.repository = repository.clone();
-            }
-            Err(e) => {
-                return Err(e);
-            }
+    debug!("Status: {}", output.status);
+    debug!("Stdout: {stdout}");
+    debug!("Stderr: {stderr}");
+    if !output.status.success() {
+        return Err(anyhow::anyhow!("GitHub CLI invocation failed: '{stderr}'"));
+    }
+
+    info!(
+        "Downloaded {}@{} into '{}'!",
+        dependency.pathspec,
+        dependency.version,
+        dependency.destination.display()
+    );
+
+    Ok(())
+}
+/// Download the given dependency.
+pub fn download(dependency: &GitHubDependency) -> Result<()> {
+    match _download(dependency) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e.context("Failed to download dependency!")),
+    }
+}
+
+/* ---------- [ Tests ] ---------- */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod test_dependency {
+        use super::*;
+
+        #[test]
+        fn test_new_full() {
+            let dependency = GitHubDependency::new(
+                String::from("owner/repo:file-pattern"),
+                Some(String::from("destination")),
+                Some(GitHubVersion::Tag(String::from("v1.0.0"))),
+                false,
+                &None,
+            )
+            .unwrap();
+
+            assert_eq!(dependency.pathspec.to_string(), "owner/repo:file-pattern");
+            assert_eq!(dependency.destination, PathBuf::from("destination"));
+            assert_eq!(dependency.version.to_string(), String::from("v1.0.0"));
+            assert!(!dependency.gitignore);
         }
 
-        // Check if it can be installed
-        download(dependency)?;
-
-        // Create objects to reference later on
-        let new_dependency = Dependency::Full(dependency.to_owned());
-        let formatted_value = toml_edit::Item::Table({
-            let mut new_table = toml_edit::Table::new();
-            new_table.insert(KEY_REPOSITORY, toml_edit::value(repository));
-            new_table.insert(KEY_VERSION, toml_edit::value(dependency.version.clone()));
-            new_table.insert(
-                KEY_DESTINATION,
-                toml_edit::value(dependency.destination.display().to_string()),
+        #[test]
+        fn test_new_invalid() {
+            let dependency = GitHubDependency::new(
+                String::from("pattern"),
+                Some(String::from("destination")),
+                Some(GitHubVersion::Tag(String::from("v1.0.0"))),
+                false,
+                &None,
             );
-            new_table
-        });
 
-        sink_toml.add_dependency(
-            PLUGIN_NAME,
-            dependency.group.as_ref(),
-            new_dependency,
-            &file_pattern,
-            formatted_value,
-        )
+            assert!(dependency.is_err());
+
+            let dependency = GitHubDependency::new(
+                String::from("repo/pattern"),
+                Some(String::from("destination")),
+                Some(GitHubVersion::Tag(String::from("v1.0.0"))),
+                false,
+                &None,
+            );
+
+            assert!(dependency.is_err());
+
+            let dependency = GitHubDependency::new(
+                String::from("owner/repo/pattern"),
+                Some(String::from("destination")),
+                Some(GitHubVersion::Tag(String::from("v1.0.0"))),
+                false,
+                &None,
+            );
+
+            assert!(dependency.is_err());
+        }
+
+        #[test]
+        fn test_new_default() {
+            let dependency = GitHubDependency::new(
+                String::from("repo:pattern"),
+                None,
+                None,
+                true,
+                &Some(String::from("owner")),
+            )
+            .unwrap();
+
+            assert_eq!(dependency.pathspec.to_string(), "owner/repo:pattern");
+            assert_eq!(dependency.destination, PathBuf::from("."));
+            assert_eq!(dependency.version.to_string(), String::from("latest"));
+            assert!(dependency.gitignore);
+        }
     }
-    /// Add a dependency.
-    pub fn add(sink_toml: &mut SinkTOML, mut dependency: super::GitHubDependency) {
-        match _add(sink_toml, &mut dependency) {
-            Ok(_) => {
-                info!("Added {}!", dependency.dependency);
-            }
-            Err(add_error) => {
-                error!(
-                    "{}",
-                    SinkError::Any(
-                        add_error.context(format!("Failed to add '{}'!", dependency.dependency))
-                    )
-                );
-            }
-        };
-    }
 
-    pub fn download(dependency: &super::GitHubDependency) -> Result<()> {
-        info!(
-            "Downloading {}@{} into {}...",
-            dependency.dependency,
-            dependency.version,
-            dependency.destination.display()
-        );
+    mod test_pathspec {
+        use super::*;
 
-        // TODO: Actually install
+        #[test]
+        fn test_from_string() {
+            let path_spec = GitHubPathspec::try_from(String::from("owner/repo:pattern")).unwrap();
 
-        info!(
-            "Downloaded {}@{} into {}!",
-            dependency.dependency,
-            dependency.version,
-            dependency.destination.display()
-        );
+            assert_eq!(path_spec.owner, "owner");
+            assert_eq!(path_spec.repository, "repo");
+            assert_eq!(path_spec.pattern, "pattern");
 
-        Ok(())
+            let path_spec = GitHubPathspec::try_from(String::from(
+                "complex-owner/weird%%repo:patt[A-Z]ern*.txt",
+            ))
+            .unwrap();
+
+            assert_eq!(path_spec.owner, "complex-owner");
+            assert_eq!(path_spec.repository, "weird%%repo");
+            assert_eq!(path_spec.pattern, "patt[A-Z]ern*.txt");
+        }
+
+        #[test]
+        fn test_from_string_invalid() {
+            assert!(GitHubPathspec::try_from(String::from("owner/repo")).is_err());
+            assert!(GitHubPathspec::try_from(String::from("repo:pattern")).is_err());
+            assert!(GitHubPathspec::try_from(String::from("/:")).is_err());
+            assert!(GitHubPathspec::try_from(String::from("owner/:pattern")).is_err());
+        }
+
+        #[test]
+        fn test_into_string() {
+            let path_spec = GitHubPathspec {
+                owner: String::from("owner"),
+                repository: String::from("repo"),
+                pattern: String::from("pattern"),
+            };
+
+            assert_eq!(path_spec.to_string(), "owner/repo:pattern");
+        }
     }
 }

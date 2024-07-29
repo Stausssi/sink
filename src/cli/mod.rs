@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand};
 
 use crate::github;
 
@@ -11,10 +11,16 @@ pub struct SinkCLI {
 
     /// Enable verbose (debug) output.
     ///
-    /// This flag will set the default log level from 'info' to 'debug'.
+    /// This flag will set the default log level from ``info`` to ``debug``.
     /// TODO: Don't allow passing solely this flag
     #[arg(long, global = true)]
     pub verbose: bool,
+
+    /// Path to the sink TOML file to use.
+    ///
+    /// This is relative to the current working directory.
+    #[arg(short, long, global = true, default_value = "sink.toml")]
+    pub file: String,
 }
 
 #[derive(Subcommand)]
@@ -26,9 +32,11 @@ pub enum SinkSubcommands {
     /// Install dependencies
     Install(SubcommandInstall),
 
-    /// Manage GitHub dependencies
-    #[command(subcommand, name = "github", alias = "gh")]
-    GitHub(github::cli::SubcommandGitHub),
+    /// Add dependencies
+    Add(SubcommandAdd),
+
+    /// Remove dependencies
+    Remove(SubcommandRemove),
 }
 
 #[derive(Args)]
@@ -36,84 +44,95 @@ pub enum SinkSubcommands {
 pub struct SubcommandConfig {
     /// Print the current sink TOML as a structure.
     ///
-    /// This will print the currently loaded sink TOML with all 'includes' resolved.
+    /// This will print the currently loaded sink TOML with all ``includes`` resolved.
     #[arg(short, long)]
     pub all: bool,
 
     /// Print the current sink TOML as a TOML.
     ///
-    /// This will print the currently loaded sink TOML with all 'includes' resolved.
+    /// This will print the currently loaded sink TOML with all ``includes`` resolved.
     #[arg(short, long)]
     pub toml: bool,
 
-    /// List a specific type of entry contained in the sink TOML.
-    #[arg(value_enum, short, long)]
-    pub list: Option<ConfigListOptions>,
-
-    /// Show a singular field by identifier.
-    ///
-    /// The identifier is expected to a '.' separated path to the field inside the sink TOML.
+    /// List all dependencies.
     #[arg(short, long)]
-    pub field: Option<String>,
+    pub list: bool,
 
     /// Update the value of a config field.
     ///
-    /// Expects a key=value pairing. This is NOT intended to be used on dependencies.
+    /// Expects a ``key=value`` pairing.
+    /// This is **not** intended to be used on dependencies.
     #[arg(short, long)]
     pub update: Option<String>,
 }
 
-#[derive(ValueEnum, Clone)]
-pub enum ConfigListOptions {
-    /// Shows all groups (Dev, Prod, etc.).
-    Groups,
-
-    /// Shows all languages (Python, Rust, ...).
-    Languages,
-
-    /// Shows all dependencies independent of group and language.
-    Dependencies,
-}
-
 #[derive(Args, Debug)]
-#[command(arg_required_else_help = true)]
+#[command(arg_required_else_help = false)]
 pub struct SubcommandInstall {
-    /// Install all dependencies.
-    ///
-    /// Regardless of group and language.
-    #[arg(short, long)]
-    pub all: bool,
-
-    /// Install only dependencies of a specific language.
-    ///
-    /// Can be combined with --group
-    #[arg(value_enum, short, long)]
-    pub lang: Option<Languages>,
-
-    /// Install only a specific group of dependencies.
-    ///
-    /// Available groups are determined case-insensitive at runtime. Can be combined with --lang.
-    #[arg(short, long)]
-    pub group: Option<String>,
-
-    /// Install based on sink.lock.
+    /// Install based on ``sink.lock``.
     ///
     /// Recommended to be used for reproducible builds.
     #[arg(short, long)]
     pub sink: bool,
 }
 
-#[derive(ValueEnum, Clone, Debug)]
-pub enum Languages {
-    /// Python. Alias: 'py'
-    #[value(alias = "py")]
-    Python,
+#[derive(Args, Debug)]
+#[command(arg_required_else_help = true)]
+pub struct SubcommandAdd {
+    /// The dependency to add.
+    ///
+    /// Supposed to be in the form of 'owner/repository:dependency'.
+    /// The 'owner/repository' part will default to the default owner and repository, if set.
+    /// TODO: Use an enum for this
+    pub dependency: String,
 
-    /// Rust. Alias: 'rs'
-    #[value(alias = "rs")]
-    Rust,
+    /// The local destination to download the dependency to.
+    ///
+    /// This is relative to the directory the 'sink.toml' is in.
+    #[arg(short, long, alias = "dest")]
+    pub destination: Option<String>,
 
-    /// GitHub. Alias: 'gh'
-    #[value(name = "github", alias = "gh")]
-    GitHub,
+    /// The version to download.
+    ///
+    /// Defaults to 'latest'.
+    ///
+    /// Possible values: ['latest', 'prerelease', specific tag (e.g. 'v1.0.0')]
+    #[arg(short, long, value_parser = github::GitHubVersion::parse_cli)]
+    pub version: Option<github::GitHubVersion>,
+
+    /// Whether to skip adding the downloaded asset(s) to the gitignore.
+    ///
+    /// Defaults to false.
+    #[arg(long)]
+    pub no_gitignore: bool,
+
+    /// Whether to add the dependency in the short form.
+    ///
+    /// This will add a single line with just the version to the dependencies.
+    /// Conflicts with both 'destination' and 'no_gitignore'.
+    /// TODO: Maybe determine this automatically?
+    #[arg(long, conflicts_with_all = ["destination", "no_gitignore"])]
+    pub short: bool,
+}
+
+#[derive(Args, Debug)]
+#[command(arg_required_else_help = true)]
+pub struct SubcommandRemove {
+    /// The dependency to remove.
+    ///
+    /// **Must** to be in the form of 'owner/repository:dependency'.
+    /// TODO: Use an enum for this
+    dependency: String,
+}
+
+/* ---------- [ Tests ] ---------- */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_cli() {
+        use clap::CommandFactory;
+        SinkCLI::command().debug_assert();
+    }
 }

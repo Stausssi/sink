@@ -1,0 +1,25 @@
+name: 🛫 Release sink
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: 🦀 Check code quality
+    uses: Stausssi/sink/.github/workflows/check-code-quality.yml@rollback
+    secrets: inherit
+
+  build:
+    name: 🚧 Build sink binaries
+    needs: check
+    uses: Stausssi/sink/.github/workflows/build.yml@rollback
+    secrets: inherit
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - run: echo "to be implemented."

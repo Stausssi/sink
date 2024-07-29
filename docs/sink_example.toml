@@ -1,52 +1,22 @@
-# Include other sink.toml files. Could also be used to separate programming languages and stuff
+# Optional: The default owner to fall back to if not explicitly set
+default-owner = "Stausssi"
+
+# With optional includes you can split the dependencies into multiple files
 includes = [
     "path/to/other/sink.toml",
 ]
-# Specify the default dependency group for every language
-default-group = "prod"
 
-# Everything following this is plugin specific
-[Python]
-version = "3.11"
-# Either the name of venv inside $HOME/.virtualenvs or relative path to repostory root
-venv = "project-name" # Would result in $HOME/.virtualenvs/project-name
-# venv = "./venv"  # Would result in PROJECT_DIR/venv
-# Tell Python to use pip as a provider. This is Python plugin specific
-provider = "pip"
-# Overwrite the default group specified in the root table
-default-group = "dev"
+# The dependency table contains all assets to sync
+[dependencies]
 
-    [Python.dev]
-    # Install all prod requirements as well
-    includes = "prod"
+# This will sync version v1.2.3 of 'sink_example.toml' from 'Stausssi/sink' into the directory the sink.toml is in
+"Stausssi/sink:sink_example.toml" = "v1.2.3"
 
-        [Python.dev.dependencies]
-        # This matches solely version 1.2.3
-        python-package = "1.2.3"
-        # This matches anything bigger than 1.0.0, same for < (less than)
-        other-package = ">1.0.0"
-        # This matches anything compatible with 1.0.0
-        last-package = "~1.0.0"
-
-[Python.prod]
-    # Dependencies can also be defined as table
-    [Python.prod.dependencies.package-from-git]
-    version = "v1.2.3"
-    url     = "https://www.github.com/some-package-from-git"
-
-[Rust]
-    # The group is optional. If none is given, it will be installed either with `default-group` or all (?)
-    [Rust.dependencies]
-    some-rust-thing = { version = "1.2.3", features = ["foobar"] }
-
-[GitHub]
-default-owner      = "Stausssi"
-default-repository = "sink"
-
-    # Dependencies can be quoted to allow for complex names
-    [GitHub.prod.dependencies."file-*.json"]
-    repository = "Stausssi/Stausssi"
-    # version can be any git release tag, defaults to the latest available release
-    version = "v1.2.3"
-    # The destination to download the files to
+    # Dependencies can be specified in tables to allow for more complex configurations
+    [dependencies."Stausssi/Stausssi:file-*.json"]
+    # Version can be any git release tag, defaults to the latest available release if not set
+    version = "latest"
+    # The destination to download the file(s) to
     destination = "./imported/"
+    # Whether the file should be put into the .gitignore
+    gitignore = true
