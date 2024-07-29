@@ -9,13 +9,13 @@ env:
 jobs:
   check:
     name: 🦀 Check code quality
-    uses: Stausssi/sink/.github/workflows/check-code-quality.yml@rollback
+    uses: Stausssi/sink/.github/workflows/check-code-quality.yml@main
     secrets: inherit
 
   build:
     name: 🚧 Build sink binaries
     needs: check
-    uses: Stausssi/sink/.github/workflows/build.yml@rollback
+    uses: Stausssi/sink/.github/workflows/build.yml@main
     secrets: inherit
 
   release:
