@@ -7,6 +7,8 @@ use log::{debug, error, info};
 extern crate sink;
 use sink::cli;
 use sink::github;
+use sink::toml::DependencyType;
+use sink::SinkError;
 use sink::SinkTOML;
 
 fn main() {
@@ -46,8 +48,32 @@ fn main() {
                 info!("{}", sink_toml.to_toml());
             }
         }
-        cli::SinkSubcommands::Install(params) => {
-            info!("{:#?}", params);
+        cli::SinkSubcommands::Install(_) => {
+            for (pattern, dependency) in sink_toml.dependencies.iter() {
+                let github_dependency = match dependency {
+                    DependencyType::Full(github_dependency) => github_dependency,
+                    DependencyType::Version(version) => &match github::GitHubDependency::new(
+                        pattern.to_string(),
+                        None,
+                        Some(version.to_owned()),
+                        true,
+                        &None,
+                    ) {
+                        Ok(new_dependency) => new_dependency,
+                        Err(e) => {
+                            error!("{e}");
+                            continue;
+                        }
+                    },
+                    DependencyType::Invalid(_) => {
+                        error!("Invalid dependency entry for '{}'!", pattern);
+                        continue;
+                    }
+                };
+                if let Err(e) = github::download(github_dependency) {
+                    error!("{}", SinkError::Any(e));
+                }
+            }
         }
         cli::SinkSubcommands::Add(params) => {
             match github::GitHubDependency::new(

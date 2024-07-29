@@ -107,7 +107,6 @@ pub mod toml {
             let mut sink_toml: SinkTOML = toml::from_str(&string_contents)?;
             sink_toml.path = PathBuf::from(path);
             sink_toml.formatted = string_contents.parse::<DocumentMut>()?;
-            let sink_toml = sink_toml;
 
             // Extend with all files listed in include
             for include_path in sink_toml.includes.iter() {
@@ -130,6 +129,14 @@ pub mod toml {
 
             // Check for invalid entries
             sink_toml._validate()?;
+
+            // Fill the missing pathspec, as serde skips over it
+            for (pathspec, dependency) in sink_toml.dependencies.iter_mut() {
+                if let DependencyType::Full(missing_spec) = dependency {
+                    missing_spec.pathspec = pathspec.clone();
+                }
+            }
+            let sink_toml = sink_toml;
 
             debug!("Parsing done!");
 

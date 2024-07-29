@@ -1,12 +1,12 @@
 use anyhow::Result;
-use log::info;
+use log::{debug, info};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, path::PathBuf};
+use std::{fmt::Display, path::PathBuf, process::Command};
 
 extern crate toml as ex_toml;
 
-use crate::{toml::DependencyType, SinkError, SinkTOML};
+use crate::{toml::DependencyType, SinkTOML};
 
 /// Provides a default value of `true` for [`serde`].
 fn _default_true() -> bool {
@@ -118,6 +118,11 @@ impl GitHubPathspec {
     pub fn is_valid(&self) -> bool {
         !self.owner.is_empty() && !self.repository.is_empty() && !self.pattern.is_empty()
     }
+
+    pub fn get_full_origin(&self) -> String {
+        assert!(self.is_valid());
+        format!("{}/{}", self.owner, self.repository)
+    }
 }
 impl Display for GitHubPathspec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -195,17 +200,14 @@ pub fn add(
     sink_toml: SinkTOML,
     dependency: GitHubDependency,
     short_form: bool,
-) -> Result<SinkTOML, SinkError> {
+) -> Result<SinkTOML> {
     match _add(sink_toml, dependency, short_form) {
         Ok(sink_toml) => Ok(sink_toml),
-        Err(add_error) => Err(SinkError::Any(
-            add_error.context("Failed to add dependency!"),
-        )),
+        Err(e) => Err(e.context("Failed to add dependency!")),
     }
 }
 
-/// Download the given dependency.
-pub fn download(dependency: &GitHubDependency) -> Result<()> {
+fn _download(dependency: &GitHubDependency) -> Result<()> {
     info!(
         "Downloading {}@{} into '{}' ...",
         dependency.pathspec,
@@ -213,10 +215,37 @@ pub fn download(dependency: &GitHubDependency) -> Result<()> {
         dependency.destination.display()
     );
 
-    // TODO: Actually install
-
     // Use the GH CLI to download the asset
-    // gh release download --repo owner/repo --pattern 'file-pattern' --destination 'destination'
+    let output = match Command::new("gh")
+        .arg("release")
+        .arg("download")
+        .arg("--repo")
+        .arg(dependency.pathspec.get_full_origin())
+        .arg("--pattern")
+        .arg(dependency.pathspec.pattern.clone())
+        .arg("--dir")
+        .arg(dependency.destination.clone())
+        .output()
+    {
+        Ok(output) => output,
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "Failed to invoke GitHub CLI: {e}. Is it installed?"
+            ))
+        }
+    };
+
+    let stdout = String::from_utf8(output.stdout)?;
+    let stdout = stdout.trim();
+    let stderr = String::from_utf8(output.stderr)?;
+    let stderr = stderr.trim();
+
+    debug!("Status: {}", output.status);
+    debug!("Stdout: {stdout}");
+    debug!("Stderr: {stderr}");
+    if !output.status.success() {
+        return Err(anyhow::anyhow!("GitHub CLI invocation failed: '{stderr}'"));
+    }
 
     info!(
         "Downloaded {}@{} into '{}'!",
@@ -226,6 +255,13 @@ pub fn download(dependency: &GitHubDependency) -> Result<()> {
     );
 
     Ok(())
+}
+/// Download the given dependency.
+pub fn download(dependency: &GitHubDependency) -> Result<()> {
+    match _download(dependency) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e.context("Failed to download dependency!")),
+    }
 }
 
 /* ---------- [ Tests ] ---------- */

@@ -28,6 +28,6 @@ sink
         -d, --dest, --destination:  Optional, The local destination to download the file(s) into
         -v, --version:              Optional, The version (git tag) to download
         --no-gitignore:             Optional, Do not add the dependency to the .gitignore file
-        
+
     remove <dependency>             Remove and uninstall a dependency in the form of 'owner/repo:dependency'
 ```
