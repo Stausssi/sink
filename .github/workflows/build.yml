@@ -1,4 +1,4 @@
-name: Build sink binaries
+name: 🚧 Build sink binaries
 
 on:
     push:

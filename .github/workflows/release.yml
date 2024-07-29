@@ -1,4 +1,4 @@
-name: Release sink
+name: 🛫 Release sink
 
 on:
   workflow_dispatch:
@@ -8,12 +8,12 @@ env:
 
 jobs:
   check:
-    name: Check code quality
+    name: 🦀 Check code quality
     uses: Stausssi/sink/.github/workflows/check-code-quality.yml@rollback
     secrets: inherit
 
   build:
-    name: Build sink binaries
+    name: 🚧 Build sink binaries
     needs: check
     uses: Stausssi/sink/.github/workflows/build.yml@rollback
     secrets: inherit

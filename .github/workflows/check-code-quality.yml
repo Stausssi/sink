@@ -1,4 +1,4 @@
-name: Check code quality
+name: 🦀 Check code quality
 run-name: Check code quality for ${{ github.ref }}
 
 on:
@@ -11,7 +11,7 @@ env:
 
 jobs:
   check-rust:
-    name: Check code quality
+    name: Check Rust
     runs-on: ubuntu-latest
     steps:
       - name: Clone repository
