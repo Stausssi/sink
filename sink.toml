@@ -1,0 +1,9 @@
+[dependencies]
+
+"bosch-sofc/sofc-cm-plugin-interface:*.dp" = "prerelease"
+"bosch-sofc/sofc-cm-data-model:pull_*.sh"  = "v1.16.6"
+
+    [dependencies."bosch-sofc/sofc-cm-provisioning:*.json"]
+    version     = "latest"
+    destination = "./imported/"
+    gitignore   = true

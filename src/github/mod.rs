@@ -1,10 +1,12 @@
 use anyhow::Result;
-use log::{debug, info};
+use log::info;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, path::PathBuf, process::Command};
+use std::{fmt::Display, path::PathBuf};
 
 extern crate toml as ex_toml;
+
+pub mod api;
 
 use crate::{toml::DependencyType, SinkTOML};
 
@@ -54,14 +56,11 @@ impl GitHubDependency {
                 if default_owner.is_none() {
                     return Err(e);
                 }
-                match GitHubPathspec::try_from(format!(
+                GitHubPathspec::try_from(format!(
                     "{}/{}",
                     default_owner.as_ref().unwrap(),
                     dependency
-                )) {
-                    Ok(pathspec) => pathspec,
-                    Err(e) => return Err(e),
-                }
+                ))?
             }
         };
 
@@ -215,46 +214,28 @@ fn _download(dependency: &GitHubDependency) -> Result<()> {
         dependency.destination.display()
     );
 
-    // Use the GH CLI to download the asset
-    let output = match Command::new("gh")
-        .arg("release")
-        .arg("download")
-        .arg("--repo")
-        .arg(dependency.pathspec.get_full_origin())
-        .arg("--pattern")
-        .arg(dependency.pathspec.pattern.clone())
-        .arg("--dir")
-        .arg(dependency.destination.clone())
-        .output()
-    {
-        Ok(output) => output,
-        Err(e) => {
-            return Err(anyhow::anyhow!(
-                "Failed to invoke GitHub CLI: {e}. Is it installed?"
-            ))
+    // Use the GitHub API client to download the asset
+    match api::download_release_asset(
+        &dependency.pathspec.owner,
+        &dependency.pathspec.repository,
+        &dependency.version.to_string(),
+        &dependency.pathspec.pattern,
+        &dependency.destination,
+    ) {
+        Ok(_) => {
+            info!(
+                "Downloaded {}@{} into '{}'!",
+                dependency.pathspec,
+                dependency.version,
+                dependency.destination.display()
+            );
+            Ok(())
         }
-    };
-
-    let stdout = String::from_utf8(output.stdout)?;
-    let stdout = stdout.trim();
-    let stderr = String::from_utf8(output.stderr)?;
-    let stderr = stderr.trim();
-
-    debug!("Status: {}", output.status);
-    debug!("Stdout: {stdout}");
-    debug!("Stderr: {stderr}");
-    if !output.status.success() {
-        return Err(anyhow::anyhow!("GitHub CLI invocation failed: '{stderr}'"));
+        Err(e) => {
+            // Just propagate the error without falling back to CLI
+            Err(e)
+        }
     }
-
-    info!(
-        "Downloaded {}@{} into '{}'!",
-        dependency.pathspec,
-        dependency.version,
-        dependency.destination.display()
-    );
-
-    Ok(())
 }
 /// Download the given dependency.
 pub fn download(dependency: &GitHubDependency) -> Result<()> {

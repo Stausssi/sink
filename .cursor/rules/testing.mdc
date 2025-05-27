@@ -1,0 +1,12 @@
+---
+description: 
+globs: *.rs
+alwaysApply: false
+---
+Every Rust file, but especially library files, should contain a `mod test {}` that primarily runs unit tests on the methods of the file. DO NOT TEST TRIVIAL FUNCTIONALITY.
+After every change, run the tests and make sure the tests pass. If a test fails, check whether the test is wrong or the code was wrongfully changed. Prefer to not change tests unless the functionality of the method was fundamentally changed.
+Also, there musn't be any test-specific code mixed in production code. This must be avoided at all costs and is also valid for `cfg(test)` and more!
+
+If applicable, integration tests should not be part of the library file but of the file where the parts of the library are used.
+Ask how to proceed with tests if a third-party tool (such as an external library wrapping a command or HTTP requests) or external data would be used by the test.
+

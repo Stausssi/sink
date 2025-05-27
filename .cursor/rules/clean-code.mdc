@@ -1,0 +1,20 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+The generated code...
+- does not contain any linter warnings or errors
+- is well-structured and follows the pre-defined project structure. Make sure to use and implement common design patterns, if applicable. Design patterns musn't be forced, but should only be applied if they make sense. You can refer to https://refactoring.guru/design-patterns/catalog for a list of common design patterns.
+- separates files by logic
+- is always formatted
+- contains extensive documentation
+- uses only meaningful, yet short and concise variable names
+- is nested only to the minimum extend. Always prioritize returning early in failure cases
+- contains extensive and thought through error handling. Library functions should propagate most errors to the caller and leave it to the caller to handle
+- should not be bloated
+- should be self-explanatory when reading
+- structs, variables and methods are private by default and the scope should be restricted as much as possible. We want a very low coupling.
+
+Besides that, dependencies in [Cargo.toml](mdc:Cargo.toml) should always be kept up to date as well as the shared actions used in GitHub workflows.
+
