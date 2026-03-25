@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.sink": "ini",
+        "*.sink.ignore": "ini",
+    }
+}
