@@ -1,0 +1,8 @@
+source=https://github.com/Stausssi/sink:internal/application/sinkfile/test/gitbased.sink.ignore
+ref=main
+
+gitignore=true
+lock=true
+symlink=another_file
+symlink=even_more
+permissions=0777

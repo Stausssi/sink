@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "*.sink": "ini",
+        "*.sink.ignore": "ini",
+    },
+    // I want to *actually* learn something here
+    "chat.disableAIFeatures": true,
+    "cSpell.words": [
+        "failable",
+        "Failable"
+    ]
+}
