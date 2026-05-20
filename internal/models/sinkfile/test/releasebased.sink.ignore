@@ -1,0 +1,9 @@
+source=Stausssi/sink:releasebased.sink.ignore
+version=v1.0.0
+digest=53b9f00bb33bb6b20028831416c6e4143d7950db9ce1e83c3e6ef4164415240c
+
+gitignore=true
+lock=true
+symlink=another_file
+symlink=even_more
+permissions=0777

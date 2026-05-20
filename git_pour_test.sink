@@ -1,0 +1,3 @@
+source="https://github.com/Stausssi/sink.git:git_pour_test.sink"
+ref="go-rewrite"
+permissions=0777
